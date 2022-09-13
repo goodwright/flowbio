@@ -12,3 +12,14 @@ class Client(kirjava.Client):
         } }""", variables={"username": username, "password": password})
         token = response["data"]["login"]["accessToken"]
         self.headers["Authorization"] = token
+    
+
+    def user(self, username):
+        """Returns a user object."""
+
+        response = self.execute("""query user(
+            $username: String!
+        ) { user(username: $username) {
+            id username name
+        } }""", variables={"username": username})
+        return response["data"]["user"]
