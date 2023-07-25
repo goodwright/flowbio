@@ -10,7 +10,7 @@ class GraphQlError(Exception):
 class Client(kirjava.Client, UploadClient, SamplesClient):
 
     def execute(self, *args, **kwargs):
-        """Executes a GraphQL query and raises an exception if it fails."""
+        __doc__ = kirjava.Client.execute.__doc__
 
         resp = super().execute(*args, **kwargs)
         if "errors" in resp:
@@ -19,7 +19,10 @@ class Client(kirjava.Client, UploadClient, SamplesClient):
     
 
     def login(self, username, password):
-        """Acquires the relevant access token for the client."""
+        """Acquires the relevant access token for the client.
+        
+        :param str username: The username of the user.
+        :param str password: The password of the user."""
         
         response = self.execute("""mutation login(
             $username: String! $password: String!
@@ -31,7 +34,10 @@ class Client(kirjava.Client, UploadClient, SamplesClient):
     
 
     def user(self, username):
-        """Returns a user object."""
+        """Returns a user object.
+        
+        :param str username: The username of the user.
+        :rtype: ``dict``"""
 
         response = self.execute("""query user(
             $username: String!

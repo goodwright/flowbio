@@ -19,13 +19,20 @@ class TempFile(io.BytesIO):
 class UploadClient:
 
     def data(self, id):
-        """Returns a data object."""
+        """Returns a data object.
+        
+        :param str id: The ID of the data.
+        :rtype: ``dict``"""
 
         return self.execute(DATA, variables={"id": id})["data"]["data"]
     
 
     def upload_data(self, path, chunk_size=1_000_000, progress=False):
-        """Uploads a file to the server."""
+        """Uploads a file to the server.
+        
+        :param str path: The path to the file.
+        :param int chunk_size: The size of each chunk to upload.
+        :param bool progress: Whether to show a progress bar."""
 
         size = os.path.getsize(path)
         chunks = math.ceil(size / chunk_size)
@@ -33,8 +40,7 @@ class UploadClient:
         chunk_nums = tqdm(range(chunks)) if progress else range(chunks)
         for chunk_num in chunk_nums:
             filename = Path(path).name
-            if progress:
-                chunk_nums.set_description(f"Uploading {filename}")
+            if progress: chunk_nums.set_description(f"Uploading {filename}")
             with open(path, "rb") as f:
                 f.seek(chunk_num * chunk_size)
                 data = TempFile(f.read(chunk_size), name=filename)
@@ -50,41 +56,41 @@ class UploadClient:
 
 
     def upload_sample(self, name, path1, path2=None, chunk_size=1_000_000, progress=False, metadata=None):
-        """Uploads a sample to the server."""
+        """Uploads a sample to the server.
+        
+        :param str name: The name of the sample.
+        :param str path1: The path to the first file.
+        :param str path2: The path to the second file if sample is paired-end.
+        :param int chunk_size: The size of each chunk to upload.
+        :param bool progress: Whether to show a progress bar.
+        :param dict metadata: The metadata to attach to the sample.
+        :rtype: ``dict``"""
 
         reads = [path1, path2] if path2 else [path1]
-        previous_data = []
-        data_id, sample_id = None, None
-        metadata = metadata or {}
+        data_id, sample_id, previous_data = None, None, []
         for path in reads:
             size = os.path.getsize(path)
             chunks = math.ceil(size / chunk_size)
             chunk_nums = tqdm(range(chunks)) if progress else range(chunks)
             for chunk_num in chunk_nums:
                 filename = Path(path).name
-                if progress:
-                    chunk_nums.set_description(f"Uploading {filename}")
+                if progress: chunk_nums.set_description(f"Uploading {filename}")
                 with open(path, "rb") as f:
                     f.seek(chunk_num * chunk_size)
                     data = TempFile(f.read(chunk_size), name=filename)
-                    is_last_data = chunk_num == chunks - 1
-                    is_last_sample = is_last_data and path == reads[-1]
-                    resp = self.execute(UPLOAD_SAMPLE, variables={
-                        "blob": data,
-                        "isLastData": is_last_data,
-                        "isLastSample": is_last_sample,
-                        "expectedFileSize": chunk_num * chunk_size,
-                        "data": data_id,
-                        "filename": filename,
-                        "sampleName": name,
-                        "previousData": previous_data,
-                        **metadata
-                    })
-                    if "errors" in resp:
-                        raise Exception(resp["errors"])
-                    data_id = resp["data"]["uploadDemultiplexedData"]["dataId"]
-                    sample_id = resp["data"]["uploadDemultiplexedData"]["sampleId"]
-                    if is_last_data:
-                        previous_data.append(data_id)
-                        data_id = None
+                is_last_data = chunk_num == chunks - 1
+                is_last_sample = is_last_data and path == reads[-1]
+                resp = self.execute(UPLOAD_SAMPLE, variables={
+                    "blob": data, "isLastData": is_last_data,
+                    "isLastSample": is_last_sample,
+                    "expectedFileSize": chunk_num * chunk_size,
+                    "data": data_id, "filename": filename,
+                    "sampleName": name, "previousData": previous_data,
+                    **(metadata or {})
+                })
+                data_id = resp["data"]["uploadDemultiplexedData"]["dataId"]
+                sample_id = resp["data"]["uploadDemultiplexedData"]["sampleId"]
+                if is_last_data:
+                    previous_data.append(data_id)
+                    data_id = None
         return self.sample(sample_id)

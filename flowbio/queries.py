@@ -1,3 +1,5 @@
+"""GraphQL queries."""
+
 DATA = """query data($id: ID!) { data(id: $id) {
   id filename filetype size category created isDirectory isBinary private
   upstreamProcessExecution { id processName execution {
@@ -10,6 +12,7 @@ DATA = """query data($id: ID!) { data(id: $id) {
   genomeFasta { id name organism { name } }
   genomeGtf { id name organism { name } }
 } }"""
+
 
 SAMPLE = """query sample($id: ID!) {
   sample(id: $id) {

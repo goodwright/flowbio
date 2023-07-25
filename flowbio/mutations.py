@@ -1,3 +1,5 @@
+"""GraphQL mutations."""
+
 UPLOAD_DATA = """mutation uploadData(
     $blob: Upload! $isLast: Boolean! $expectedFileSize: Float! $data: ID
     $filename: String!
@@ -5,6 +7,7 @@ UPLOAD_DATA = """mutation uploadData(
     blob: $blob isLast: $isLast expectedFileSize: $expectedFileSize
     data: $data filename: $filename
 ) { dataId } }"""
+
 
 UPLOAD_SAMPLE = """mutation uploadDemultiplexedData(
     $blob: Upload! $isLastData: Boolean! $isLastSample: Boolean! $previousData: [ID]
