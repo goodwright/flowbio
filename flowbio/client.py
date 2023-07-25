@@ -2,6 +2,7 @@ import os
 import io
 import math
 import kirjava
+from tqdm import tqdm
 from pathlib import Path
 
 class TempFile(io.BytesIO):
@@ -35,16 +36,20 @@ class Client(kirjava.Client):
         return response["data"]["user"]
 
 
-    def upload(self, path, chunk_size=1_000_000):
+    def upload(self, path, chunk_size=1_000_000, progress=False):
         """Uploads a file to the server."""
 
         size = os.path.getsize(path)
         chunks = math.ceil(size / chunk_size)
         data_id = None
-        for chunk_num in range(chunks):
+        chunk_nums = tqdm(range(chunks)) if progress else range(chunks)
+        for chunk_num in chunk_nums:
+            filename = Path(path).name
+            if progress:
+                chunk_nums.set_description(f"Uploading {filename}")
             with open(path, "rb") as f:
                 f.seek(chunk_num * chunk_size)
-                data = TempFile(f.read(chunk_size), name=Path(path).name)
+                data = TempFile(f.read(chunk_size), name=filename)
                 resp = self.execute("""mutation uploadData(
                     $blob: Upload! $isLast: Boolean! $expectedFileSize: Float! $data: ID
                     $filename: String!
@@ -57,7 +62,7 @@ class Client(kirjava.Client):
                     "isLast": chunk_num == chunks - 1,
                     "expectedFileSize": chunk_num * chunk_size,
                     "data": data_id,
-                    "filename": path.split("/")[-1]
+                    "filename": filename
                 })
                 data_id = resp["data"]["uploadData"]["dataId"]
         data = self.execute("""query data($id: ID!) { data(id: $id) {
