@@ -6,8 +6,8 @@ import io
 import math
 from tqdm import tqdm
 from pathlib import Path
-from .queries import SAMPLE, DATA
-from .mutations import UPLOAD_SAMPLE
+from .queries import DATA, SAMPLE
+from .mutations import UPLOAD_DATA, UPLOAD_SAMPLE
 
 class TempFile(io.BytesIO):
     def __init__(self, *args, name="", **kwargs):
@@ -19,6 +19,8 @@ class TempFile(io.BytesIO):
 class UploadClient:
 
     def data(self, id):
+        """Returns a data object."""
+        
         return self.execute(DATA, variables={"id": id})["data"]["data"]
     
 
@@ -36,14 +38,7 @@ class UploadClient:
             with open(path, "rb") as f:
                 f.seek(chunk_num * chunk_size)
                 data = TempFile(f.read(chunk_size), name=filename)
-                resp = self.execute("""mutation uploadData(
-                    $blob: Upload! $isLast: Boolean! $expectedFileSize: Float! $data: ID
-                    $filename: String!
-                ) { uploadData(
-                    blob: $blob isLast: $isLast expectedFileSize: $expectedFileSize
-                    data: $data
-                    filename: $filename
-                ) { dataId } }""", variables={
+                resp = self.execute(UPLOAD_DATA, variables={
                     "blob": data,
                     "isLast": chunk_num == chunks - 1,
                     "expectedFileSize": chunk_num * chunk_size,
