@@ -5,6 +5,7 @@ import kirjava
 from tqdm import tqdm
 from pathlib import Path
 from .mutations import UPLOAD_SAMPLE
+from .queries import SAMPLE
 
 class TempFile(io.BytesIO):
     def __init__(self, *args, name="", **kwargs):
@@ -106,4 +107,5 @@ class Client(kirjava.Client):
                     if is_last_data:
                         previous_data.append(data_id)
                         data_id = None
-        return sample_id
+        sample = self.execute(SAMPLE, variables={"id": sample_id})["data"]["sample"]   
+        return sample
