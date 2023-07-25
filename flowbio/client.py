@@ -1,12 +1,13 @@
 import kirjava
 from .upload import UploadClient
+from .samples import SamplesClient
 
 class GraphQlError(Exception):
     pass
 
 
 
-class Client(kirjava.Client, UploadClient):
+class Client(kirjava.Client, UploadClient, SamplesClient):
 
     def execute(self, *args, **kwargs):
         """Executes a GraphQL query and raises an exception if it fails."""

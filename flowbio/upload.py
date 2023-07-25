@@ -6,7 +6,7 @@ import io
 import math
 from tqdm import tqdm
 from pathlib import Path
-from .queries import DATA, SAMPLE
+from .queries import DATA
 from .mutations import UPLOAD_DATA, UPLOAD_SAMPLE
 
 class TempFile(io.BytesIO):
@@ -20,11 +20,11 @@ class UploadClient:
 
     def data(self, id):
         """Returns a data object."""
-        
+
         return self.execute(DATA, variables={"id": id})["data"]["data"]
     
 
-    def upload(self, path, chunk_size=1_000_000, progress=False):
+    def upload_data(self, path, chunk_size=1_000_000, progress=False):
         """Uploads a file to the server."""
 
         size = os.path.getsize(path)
@@ -87,5 +87,4 @@ class UploadClient:
                     if is_last_data:
                         previous_data.append(data_id)
                         data_id = None
-        sample = self.execute(SAMPLE, variables={"id": sample_id})["data"]["sample"]   
-        return sample
+        return self.sample(sample_id)
