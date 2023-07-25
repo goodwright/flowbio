@@ -7,6 +7,11 @@ from pathlib import Path
 from .mutations import UPLOAD_SAMPLE
 from .queries import SAMPLE
 
+class GraphQlError(Exception):
+    pass
+
+
+
 class TempFile(io.BytesIO):
     def __init__(self, *args, name="", **kwargs):
         self.name = name
@@ -14,7 +19,16 @@ class TempFile(io.BytesIO):
 
 
 class Client(kirjava.Client):
+
+    def execute(self, *args, **kwargs):
+        """Executes a GraphQL query and raises an exception if it fails."""
+        
+        resp = super().execute(*args, **kwargs)
+        if "errors" in resp:
+            raise GraphQlError(resp["errors"])
+        return resp
     
+
     def login(self, username, password):
         """Acquires the relevant access token for the client."""
         
@@ -102,6 +116,8 @@ class Client(kirjava.Client):
                         "previousData": previous_data,
                         **metadata
                     })
+                    if "errors" in resp:
+                        raise Exception(resp["errors"])
                     data_id = resp["data"]["uploadDemultiplexedData"]["dataId"]
                     sample_id = resp["data"]["uploadDemultiplexedData"]["sampleId"]
                     if is_last_data:
