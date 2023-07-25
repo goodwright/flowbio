@@ -47,3 +47,12 @@ UPLOAD_ANNOTATION = """mutation uploadAnnotationData(
     filename: $filename laneName: $laneName lane: $lane
     ignoreWarnings: $ignoreWarnings
 ) { dataId laneId } }"""
+
+
+UPLOAD_MULTIPLEXED = """mutation uploadMultiplexedData(
+    $blob: Upload! $isLast: Boolean! $expectedFileSize: Float! $data: ID
+    $filename: String! $lane: ID $laneName: String
+) { uploadMultiplexedData(
+    blob: $blob isLast: $isLast expectedFileSize: $expectedFileSize data: $data
+    filename: $filename lane: $lane laneName: $laneName
+) { dataId } }"""

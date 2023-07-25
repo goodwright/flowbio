@@ -7,7 +7,7 @@ import math
 from tqdm import tqdm
 from pathlib import Path
 from .queries import DATA
-from .mutations import UPLOAD_DATA, UPLOAD_SAMPLE, UPLOAD_ANNOTATION
+from .mutations import UPLOAD_DATA, UPLOAD_SAMPLE, UPLOAD_ANNOTATION, UPLOAD_MULTIPLEXED
 
 class TempFile(io.BytesIO):
     def __init__(self, *args, name="", **kwargs):
@@ -106,7 +106,7 @@ class UploadClient:
         :param int chunk_size: The size of each chunk to upload.
         :param bool progress: Whether to show a progress bar.
         :rtype: ``dict``"""
-        
+
         size = os.path.getsize(path)
         chunks = math.ceil(size / chunk_size)
         data_id = None
@@ -130,4 +130,39 @@ class UploadClient:
                     "filename": filename
                 })
                 data_id = resp["data"]["uploadAnnotationData"]["dataId"]
+        return self.data(data_id)
+
+
+    def upload_multiplexed(self, path, lane_id=None, lane_name=None, chunk_size=1_000_000, progress=False):
+        """Uploads a multiplexed reads file to the server.
+
+        :param str path: The path to the multiplexed reads file.
+        :param str lane_id: The ID of the existing lane to upload to.
+        :param str lane_name: The name of the new lane to upload to.
+        :param int chunk_size: The size of each chunk to upload.
+        :param bool progress: Whether to show a progress bar.
+        :rtype: ``dict``"""
+        
+        size = os.path.getsize(path)
+        chunks = math.ceil(size / chunk_size)
+        data_id = None
+        if bool(lane_id) + bool(lane_name) != 1:
+            raise ValueError("One of lane_id or lane_name must be specified.")
+        chunk_nums = tqdm(range(chunks)) if progress else range(chunks)
+        for chunk_num in chunk_nums:
+            filename = Path(path).name
+            if progress: chunk_nums.set_description(f"Uploading {filename}")
+            with open(path, "rb") as f:
+                f.seek(chunk_num * chunk_size)
+                data = TempFile(f.read(chunk_size), name=filename)
+                resp = self.execute(UPLOAD_MULTIPLEXED, variables={
+                    "blob": data,
+                    "isLast": chunk_num == chunks - 1,
+                    "expectedFileSize": chunk_num * chunk_size,
+                    "data": data_id,
+                    "laneName": lane_name,
+                    "lane": lane_id,
+                    "filename": filename
+                })
+                data_id = resp["data"]["uploadMultiplexedData"]["dataId"]
         return self.data(data_id)
