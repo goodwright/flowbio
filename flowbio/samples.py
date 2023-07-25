@@ -1,6 +1,6 @@
 """Samples queries and mutations"""
 
-from .queries import SAMPLE
+from .queries import SAMPLE, LANE
 
 class SamplesClient:
 
@@ -11,3 +11,12 @@ class SamplesClient:
         :rtype: ``dict``"""
 
         return self.execute(SAMPLE, variables={"id": id})["data"]["sample"]
+    
+
+    def lane(self, id):
+        """Returns a lane.
+        
+        :param str id: The ID of the lane.
+        :rtype: ``dict``"""
+
+        return self.execute(LANE, variables={"id": id})["data"]["lane"]

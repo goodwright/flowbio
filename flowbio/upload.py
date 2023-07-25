@@ -166,3 +166,27 @@ class UploadClient:
                 })
                 data_id = resp["data"]["uploadMultiplexedData"]["dataId"]
         return self.data(data_id)
+
+
+    def upload_lane(self, annotation_path, multiplexed_path, lane_name, ignore_warnings=False, chunk_size=1_000_000, progress=False):
+        """Uploads an annotation sheet and multiplexed reads file to the server.
+
+        :param str annotation_path: The path to the annotation sheet.
+        :param str multiplexed_path: The path to the multiplexed reads file.
+        :param str lane_name: The name of the new lane to upload to.
+        :param bool ignore_warnings: Whether to ignore warnings in annotation.
+        :param int chunk_size: The size of each chunk to upload.
+        :param bool progress: Whether to show a progress bar.
+        :rtype: ``dict``"""
+        
+        annotation = self.upload_annotation(
+            annotation_path, lane_name=lane_name,
+            ignore_warnings=ignore_warnings,
+            chunk_size=chunk_size, progress=progress
+        )
+        lane_id = annotation["annotationLane"]["id"]
+        self.upload_multiplexed(
+            multiplexed_path, lane_id=lane_id,
+            chunk_size=chunk_size, progress=progress
+        )
+        return self.lane(lane_id)
