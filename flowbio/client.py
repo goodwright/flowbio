@@ -60,4 +60,7 @@ class Client(kirjava.Client):
                     "filename": path.split("/")[-1]
                 })
                 data_id = resp["data"]["uploadData"]["dataId"]
-        return data_id
+        data = self.execute("""query data($id: ID!) { data(id: $id) {
+            id filename filetype size category created isDirectory isBinary private
+        } }""", variables={"id": data_id})["data"]["data"]   
+        return data
