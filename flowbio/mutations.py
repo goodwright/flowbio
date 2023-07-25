@@ -37,3 +37,13 @@ UPLOAD_SAMPLE = """mutation uploadDemultiplexedData(
     sourceText: $sourceText purificationTargetText: $purificationTargetText
     geo: $geo ena: $ena pubmed: $pubmed
 ) { dataId sampleId } }"""
+
+
+UPLOAD_ANNOTATION = """mutation uploadAnnotationData(
+    $blob: Upload! $isLast: Boolean! $expectedFileSize: Float! $data: ID
+    $filename: String! $laneName: String $lane: ID $ignoreWarnings: Boolean
+) { uploadAnnotationData(
+    blob: $blob isLast: $isLast expectedFileSize: $expectedFileSize data: $data
+    filename: $filename laneName: $laneName lane: $lane
+    ignoreWarnings: $ignoreWarnings
+) { dataId laneId } }"""
