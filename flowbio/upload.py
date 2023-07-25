@@ -6,7 +6,7 @@ import io
 import math
 from tqdm import tqdm
 from pathlib import Path
-from .queries import SAMPLE
+from .queries import SAMPLE, DATA
 from .mutations import UPLOAD_SAMPLE
 
 class TempFile(io.BytesIO):
@@ -17,6 +17,10 @@ class TempFile(io.BytesIO):
 
 
 class UploadClient:
+
+    def data(self, id):
+        return self.execute(DATA, variables={"id": id})["data"]["data"]
+    
 
     def upload(self, path, chunk_size=1_000_000, progress=False):
         """Uploads a file to the server."""
@@ -47,10 +51,7 @@ class UploadClient:
                     "filename": filename
                 })
                 data_id = resp["data"]["uploadData"]["dataId"]
-        data = self.execute("""query data($id: ID!) { data(id: $id) {
-            id filename filetype size category created isDirectory isBinary private
-        } }""", variables={"id": data_id})["data"]["data"]   
-        return data
+        return self.data(data_id)
 
 
     def upload_sample(self, name, path1, path2=None, chunk_size=1_000_000, progress=False, metadata=None):
