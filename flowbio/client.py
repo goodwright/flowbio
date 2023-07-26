@@ -37,6 +37,14 @@ class Client(kirjava.Client, UploadClient, SamplesClient):
         self.headers["Authorization"] = token
     
 
+    def refresh_token(self):
+        """Refreshes the access token."""
+        
+        response = self.execute("{ accessToken }")
+        token = response["data"]["accessToken"]
+        self.headers["Authorization"] = token
+    
+
     def user(self, username):
         """Returns a user object.
         
