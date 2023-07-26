@@ -9,6 +9,10 @@ class GraphQlError(Exception):
 
 class Client(kirjava.Client, UploadClient, SamplesClient):
 
+    def __init__(self, url="https://api.flow.bio/graphql"):        
+        super().__init__(url)
+
+
     def execute(self, *args, **kwargs):
         __doc__ = kirjava.Client.execute.__doc__
 
