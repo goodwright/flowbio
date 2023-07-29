@@ -1,0 +1,18 @@
+[
+    {
+        "model": "core.user",
+        "pk": 1,
+        "fields": {
+            "username": "testuser",
+            "email": "test@goodwright.com",
+            "password": "pbkdf2_sha256$260000$KROMWn2ns42R9prZVhjnET$dzeGVqEJ1/Q9xYeg0R5mD6Tdv/DAfWz8MlHtZVTI2dA=",
+            "name": "Test User",
+            "is_admin": false,
+            "created": "1600718942",
+            "last_login": "1678769230",
+            "image": "",
+            "password_reset_token": "",
+            "password_reset_token_expiry": 0
+        }
+    }
+]
