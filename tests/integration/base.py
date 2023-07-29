@@ -55,7 +55,7 @@ class ServerTestCase(TestCase):
             cwd=self.sever_location, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
-        time.sleep(4)
+        time.sleep(3)
         self.live_server_url = f"http://localhost:{self.port}/graphql"
         self.client = flowbio.Client(self.live_server_url)
 
