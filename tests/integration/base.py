@@ -1,6 +1,8 @@
 import shutil
 import socket
 import subprocess
+import time
+import flowbio
 from pathlib import Path
 from unittest import TestCase
 
@@ -39,6 +41,12 @@ class ServerTestCase(TestCase):
     
 
     def setUp(self):
+        fixture_path = str(Path("tests", "integration", "fixtures.json").absolute())
+        subprocess.run(
+            ["python", "manage.py", "loaddata", fixture_path],
+            cwd=self.sever_location, check=True, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(("", 0))
             self.port = str(s.getsockname()[1])
@@ -47,9 +55,17 @@ class ServerTestCase(TestCase):
             cwd=self.sever_location, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
+        time.sleep(4)
         self.live_server_url = f"http://localhost:{self.port}/graphql"
+        self.client = flowbio.Client(self.live_server_url)
 
 
     def tearDown(self):
+        self.client.session.close()
         self.process.terminate()
         self.process.wait()
+        subprocess.run(
+            ["python", "manage.py", "flush", "--noinput"],
+            cwd=self.sever_location, check=True, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
