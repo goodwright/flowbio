@@ -11,7 +11,7 @@ A client for the Flow API.
     client.login("your_username", "your_password")
 
     # Upload standard data
-    data = client.upload_data("/path/to/file.fa", progress=True)
+    data = client.upload_data("/path/to/file.fa", progress=True, retries=5)
     print(data)
 
     # Upload sample
@@ -20,6 +20,7 @@ A client for the Flow API.
         "/path/to/reads1.fastq.gz",
         "/path/to/reads2.fastq.gz", # optional
         progress=True,
+        retries=5,
         metadata={
             "category": "RNA-Seq",
             "strandedness": "unstranded",
@@ -33,6 +34,7 @@ A client for the Flow API.
         "/path/to/annotation.xlsx",
         "/path/to/multiplexed.fastq.gz",
         ignore_warnings=True,
-        progress=True
+        progress=True,
+        retries=5
     )
     print(lane)
