@@ -33,3 +33,23 @@ LANE = """query lane($id: ID!) { lane(id: $id) {
     id name private created owner { id name username }
     multiplexed { id filename } annotations { id filename }
 } }"""
+
+
+PIPELINE = """{ pipelineCategories {
+    subcategories { pipelines { name version { id name } } } 
+} }"""
+
+EXECUTION = """query execution($id: ID!) { execution(id: $id) {
+    id pipelineVersion { id name description schema pipeline { id name } }
+    nextflowVersion forcedPublicProjectId forcedPublicSampleId canEdit canShare
+    created started finished taskStarted taskFinished identifier private hasReport
+    params dataParams sampleParams stdout stderr status dependent command log
+    upstreamData { id filename } owner { id name username }
+    upstreamSamples { id name } genome { id name organism { id name } }
+    sample { id name } project { id name }
+    processExecutions {
+        id identifier name processName started finished stdout stderr bash status exitCode
+        upstreamData { id filename } upstreamSamples { id name }
+        downstreamData { id filename filetype size created owner { name } isRemoved }
+    }
+} }"""

@@ -2,13 +2,14 @@ import kirjava
 import time
 from .upload import UploadClient
 from .samples import SamplesClient
+from .pipelines import PipelinesClient
 
 class GraphQlError(Exception):
     pass
 
 
 
-class Client(kirjava.Client, UploadClient, SamplesClient):
+class Client(kirjava.Client, UploadClient, SamplesClient, PipelinesClient):
 
     def __init__(self, url="https://api.flow.bio/graphql"):        
         super().__init__(url)
