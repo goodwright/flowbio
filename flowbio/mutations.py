@@ -56,3 +56,12 @@ UPLOAD_MULTIPLEXED = """mutation uploadMultiplexedData(
     blob: $blob isLast: $isLast expectedFileSize: $expectedFileSize data: $data
     filename: $filename lane: $lane laneName: $laneName
 ) { dataId } }"""
+
+
+RUN_PIPELINE = """mutation runPipeline(
+    $id: ID! $params: JSONString! $dataParams: JSONString!
+    $sampleParams: JSONString! $nextflowVersion: String! $genome: ID
+) { runPipeline(
+    id: $id params: $params dataParams: $dataParams sampleParams: $sampleParams
+    nextflowVersion: $nextflowVersion genome: $genome
+) { execution { id } } }"""
