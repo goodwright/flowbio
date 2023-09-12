@@ -38,3 +38,12 @@ A client for the Flow API.
         retries=5
     )
     print(lane)
+
+    # Run pipeline
+    execution = client.run_pipeline(
+        "RNA-Seq",
+        "3.8.1",
+        "23.04.3",
+        params={"param1": "param2"},
+        data_params={"fasta": 123456789},
+    )
