@@ -28,16 +28,21 @@ A client for the Flow API.
     )
     print(sample)
 
-    # Upload lane
-    lane = client.upload_lane(
-        "My Lane Name",
-        "/path/to/annotation.xlsx",
-        "/path/to/multiplexed.fastq.gz",
-        ignore_warnings=True,
+    # Upload multiplexed
+    multiplexed = client.upload_multiplexed(
+        "/path/to/reads.fastq.gz",
         progress=True,
-        retries=5
+        retries=5,
     )
-    print(lane)
+    print(multiplexed)
+
+    # Upload annotation
+    annotation = client.upload_annotation(
+        "/path/to/annotation.csv",
+        progress=True,
+        retries=5,
+    )
+    print(annotation)
 
     # Run pipeline
     execution = client.run_pipeline(
