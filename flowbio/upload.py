@@ -102,12 +102,10 @@ class UploadClient:
         return self.sample(sample_id)
 
 
-    def upload_annotation(self, path, lane_id=None, lane_name=None, ignore_warnings=False, chunk_size=1_000_000, progress=False, use_base64=False, retries=0):
+    def upload_annotation(self, path, ignore_warnings=False, chunk_size=1_000_000, progress=False, use_base64=False, retries=0):
         """Uploads an annotation sheet to the server.
 
         :param str path: The path to the annotation sheet.
-        :param str lane_id: The ID of the existing lane to upload to.
-        :param str lane_name: The name of the new lane to upload to.
         :param bool ignore_warnings: Whether to ignore warnings.
         :param int chunk_size: The size of each chunk to upload.
         :param bool progress: Whether to show a progress bar.
@@ -117,8 +115,6 @@ class UploadClient:
         size = os.path.getsize(path)
         chunks = math.ceil(size / chunk_size)
         data_id = None
-        if bool(lane_id) + bool(lane_name) != 1:
-            raise ValueError("One of lane_id or lane_name must be specified.")
         chunk_nums = tqdm(range(chunks)) if progress else range(chunks)
         for chunk_num in chunk_nums:
             filename = Path(path).name
@@ -133,8 +129,6 @@ class UploadClient:
                     "isLast": chunk_num == chunks - 1,
                     "expectedFileSize": chunk_num * chunk_size,
                     "data": data_id,
-                    "laneName": lane_name,
-                    "lane": lane_id,
                     "ignoreWarnings": ignore_warnings,
                     "filename": filename
                 })
@@ -142,12 +136,10 @@ class UploadClient:
         return self.data(data_id)
 
 
-    def upload_multiplexed(self, path, lane_id=None, lane_name=None, chunk_size=1_000_000, progress=False, use_base64=False, retries=0):
+    def upload_multiplexed(self, path, chunk_size=1_000_000, progress=False, use_base64=False, retries=0):
         """Uploads a multiplexed reads file to the server.
 
         :param str path: The path to the multiplexed reads file.
-        :param str lane_id: The ID of the existing lane to upload to.
-        :param str lane_name: The name of the new lane to upload to.
         :param int chunk_size: The size of each chunk to upload.
         :param bool progress: Whether to show a progress bar.
         :param int retries: The number of times to retry the upload.
@@ -156,8 +148,6 @@ class UploadClient:
         size = os.path.getsize(path)
         chunks = math.ceil(size / chunk_size)
         data_id = None
-        if bool(lane_id) + bool(lane_name) != 1:
-            raise ValueError("One of lane_id or lane_name must be specified.")
         chunk_nums = tqdm(range(chunks)) if progress else range(chunks)
         for chunk_num in chunk_nums:
             filename = Path(path).name
@@ -172,38 +162,7 @@ class UploadClient:
                     "isLast": chunk_num == chunks - 1,
                     "expectedFileSize": chunk_num * chunk_size,
                     "data": data_id,
-                    "laneName": lane_name,
-                    "lane": lane_id,
                     "filename": filename
                 })
                 data_id = resp["data"]["uploadMultiplexedData"]["dataId"]
         return self.data(data_id)
-
-
-    def upload_lane(self, name, annotation_path, multiplexed_path, ignore_warnings=False, chunk_size=1_000_000, progress=False, use_base64=False, retries=0):
-        """Uploads an annotation sheet and multiplexed reads file to the server.
-
-        :param str name: The name of the new lane.
-        :param str annotation_path: The path to the annotation sheet.
-        :param str multiplexed_path: The path to the multiplexed reads file.
-        :param bool ignore_warnings: Whether to ignore warnings in annotation.
-        :param int chunk_size: The size of each chunk to upload.
-        :param bool progress: Whether to show a progress bar.
-        :param int retries: The number of times to retry the upload.
-        :rtype: ``dict``"""
-
-        annotation = self.upload_annotation(
-            annotation_path, lane_name=name,
-            ignore_warnings=ignore_warnings,
-            chunk_size=chunk_size, progress=progress,
-            use_base64=use_base64,
-            retries=retries
-        )
-        lane_id = annotation["annotationLane"]["id"]
-        self.upload_multiplexed(
-            multiplexed_path, lane_id=lane_id,
-            chunk_size=chunk_size, progress=progress,
-            use_base64=use_base64,
-            retries=retries
-        )
-        return self.lane(lane_id)
