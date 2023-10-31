@@ -28,7 +28,7 @@ class UploadClient:
         return self.execute(DATA, variables={"id": id})["data"]["data"]
     
 
-    def upload_data(self, path, chunk_size=1_000_000, progress=False, use_base64=True, retries=0):
+    def upload_data(self, path, chunk_size=1_000_000, progress=False, use_base64=False, retries=0):
         """Uploads a file to the server.
         
         :param str path: The path to the file.
@@ -58,7 +58,7 @@ class UploadClient:
         return self.data(data_id)
 
 
-    def upload_sample(self, name, path1, path2=None, chunk_size=1_000_000, progress=False, metadata=None, use_base64=True, retries=0):
+    def upload_sample(self, name, path1, path2=None, chunk_size=1_000_000, progress=False, metadata=None, use_base64=False, retries=0):
         """Uploads a sample to the server.
         
         :param str name: The name of the sample.
@@ -102,7 +102,7 @@ class UploadClient:
         return self.sample(sample_id)
 
 
-    def upload_annotation(self, path, lane_id=None, lane_name=None, ignore_warnings=False, chunk_size=1_000_000, progress=False, use_base64=True, retries=0):
+    def upload_annotation(self, path, lane_id=None, lane_name=None, ignore_warnings=False, chunk_size=1_000_000, progress=False, use_base64=False, retries=0):
         """Uploads an annotation sheet to the server.
 
         :param str path: The path to the annotation sheet.
@@ -142,7 +142,7 @@ class UploadClient:
         return self.data(data_id)
 
 
-    def upload_multiplexed(self, path, lane_id=None, lane_name=None, chunk_size=1_000_000, progress=False, use_base64=True, retries=0):
+    def upload_multiplexed(self, path, lane_id=None, lane_name=None, chunk_size=1_000_000, progress=False, use_base64=False, retries=0):
         """Uploads a multiplexed reads file to the server.
 
         :param str path: The path to the multiplexed reads file.
@@ -180,7 +180,7 @@ class UploadClient:
         return self.data(data_id)
 
 
-    def upload_lane(self, name, annotation_path, multiplexed_path, ignore_warnings=False, chunk_size=1_000_000, progress=False, use_base64=True, retries=0):
+    def upload_lane(self, name, annotation_path, multiplexed_path, ignore_warnings=False, chunk_size=1_000_000, progress=False, use_base64=False, retries=0):
         """Uploads an annotation sheet and multiplexed reads file to the server.
 
         :param str name: The name of the new lane.
