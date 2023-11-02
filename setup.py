@@ -5,7 +5,7 @@ with open("README.rst") as f:
 
 setup(
     name="flowbio",
-    version="0.3.1",
+    version="0.3.2",
     description="A client for the Flow API.",
     long_description=long_description,
     long_description_content_type="text/x-rst",
