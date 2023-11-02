@@ -5,9 +5,7 @@ DATA = """query data($id: ID!) { data(id: $id) {
     upstreamProcessExecution { id processName execution {
         id pipelineVersion { id pipeline { id name } }
     } }
-    annotationLane { id name } multiplexedLane { id name }
     sample { id name } project { id name } owner { id username name }
-    multiplexedLane { id name }
     genome { id name organism { name } }
     genomeFasta { id name organism { name } }
     genomeGtf { id name organism { name } }
@@ -28,11 +26,6 @@ SAMPLE = """query sample($id: ID!) {
     }
 }"""
 
-
-LANE = """query lane($id: ID!) { lane(id: $id) {
-    id name private created owner { id name username }
-    multiplexed { id filename } annotations { id filename }
-} }"""
 
 
 PIPELINE = """{ pipelineCategories {

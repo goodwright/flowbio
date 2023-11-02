@@ -41,20 +41,20 @@ UPLOAD_SAMPLE = """mutation uploadDemultiplexedData(
 
 UPLOAD_ANNOTATION = """mutation uploadAnnotationData(
     $blob: Upload! $isLast: Boolean! $expectedFileSize: Float! $data: ID
-    $filename: String! $laneName: String $lane: ID $ignoreWarnings: Boolean
+    $filename: String! $ignoreWarnings: Boolean
 ) { uploadAnnotationData(
     blob: $blob isLast: $isLast expectedFileSize: $expectedFileSize data: $data
-    filename: $filename laneName: $laneName lane: $lane
+    filename: $filename
     ignoreWarnings: $ignoreWarnings
-) { dataId laneId } }"""
+) { dataId } }"""
 
 
 UPLOAD_MULTIPLEXED = """mutation uploadMultiplexedData(
     $blob: Upload! $isLast: Boolean! $expectedFileSize: Float! $data: ID
-    $filename: String! $lane: ID $laneName: String
+    $filename: String!
 ) { uploadMultiplexedData(
     blob: $blob isLast: $isLast expectedFileSize: $expectedFileSize data: $data
-    filename: $filename lane: $lane laneName: $laneName
+    filename: $filename
 ) { dataId } }"""
 
 
