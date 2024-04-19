@@ -1,6 +1,6 @@
 from setuptools import setup
 
-with open("README.rst") as f:
+with open("README.md") as f:
     long_description = f.read()
 
 setup(
@@ -8,7 +8,7 @@ setup(
     version="0.3.2",
     description="A client for the Flow API.",
     long_description=long_description,
-    long_description_content_type="text/x-rst",
+    long_description_content_type="text/markdown",
     url="https://github.com/goodwright/flowbio",
     author="Sam Ireland",
     author_email="sam@goodwright.com",
