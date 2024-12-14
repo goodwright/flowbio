@@ -1,14 +1,14 @@
 from setuptools import setup
 
-with open("README.rst") as f:
+with open("README.md") as f:
     long_description = f.read()
 
 setup(
     name="flowbio",
-    version="0.3.2",
+    version="0.3.3",
     description="A client for the Flow API.",
     long_description=long_description,
-    long_description_content_type="text/x-rst",
+    long_description_content_type="text/markdown",
     url="https://github.com/goodwright/flowbio",
     author="Sam Ireland",
     author_email="sam@goodwright.com",
@@ -23,9 +23,12 @@ setup(
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
     ],
     keywords="nextflow bioinformatics pipeline",
     packages=["flowbio"],
-    python_requires="!=2.*, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*",
+    python_requires="!=2.*, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*, !=3.6.*, !=3.7.*",
     install_requires=["tqdm", "kirjava", "requests"]
 )
