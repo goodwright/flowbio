@@ -12,7 +12,7 @@ UPLOAD_DATA = """mutation uploadData(
 UPLOAD_SAMPLE = """mutation uploadDemultiplexedData(
     $blob: Upload! $isLastData: Boolean! $isLastSample: Boolean! $previousData: [ID]
     $expectedFileSize: Float! $data: ID $filename: String! $sampleName: String!
-    $category: ID $organism: String $source: String $purificationTarget: String
+    $type: String $organism: String $source: String $purificationTarget: String
     $scientist: String $pi: String $organisation: String $purificationAgent: String
     $experimentalMethod: String $condition: String $sequencer: String $comments: String
     $fivePrimeBarcodeSequence: String $threePrimeBarcodeSequence: String $threePrimeAdapterName: String
@@ -24,7 +24,7 @@ UPLOAD_SAMPLE = """mutation uploadDemultiplexedData(
 ) { uploadDemultiplexedData(
     blob: $blob isLastData: $isLastData isLastSample: $isLastSample
     expectedFileSize: $expectedFileSize data: $data previousData: $previousData
-    filename: $filename sampleName: $sampleName category: $category
+    filename: $filename sampleName: $sampleName type: $type
     organism: $organism source: $source purificationTarget: $purificationTarget
     scientist: $scientist pi: $pi organisation: $organisation project: $project
     purificationAgent: $purificationAgent experimentalMethod: $experimentalMethod

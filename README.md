@@ -21,8 +21,9 @@ sample = client.upload_sample(
     progress=True,
     retries=5,
     metadata={
-        "category": "RNA-Seq",
-        "strandedness": "unstranded",
+        "sample_type": "RNA-Seq",
+        "scientist": "Charles Darwin",
+        "type_specific_metadata": '{"strandedness": "reverse"}',
     }
 )
 print(sample)

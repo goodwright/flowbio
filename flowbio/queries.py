@@ -14,7 +14,7 @@ DATA = """query data($id: ID!) { data(id: $id) {
 
 SAMPLE = """query sample($id: ID!) {
     sample(id: $id) {
-        id name private created category owner { id name username }
+        id name private created type owner { id name username }
         initialData { id created data { id filename } } organism { id name }
         source { id name } purificationTarget { id name } project { id name }
         sourceText purificationTargetText threePrimeAdapterName

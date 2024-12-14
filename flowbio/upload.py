@@ -5,10 +5,11 @@ import os
 import io
 import math
 import base64
+import requests
 from tqdm import tqdm
 from pathlib import Path
 from .queries import DATA
-from .mutations import UPLOAD_DATA, UPLOAD_SAMPLE, UPLOAD_ANNOTATION, UPLOAD_MULTIPLEXED
+from .mutations import UPLOAD_DATA, UPLOAD_ANNOTATION, UPLOAD_MULTIPLEXED
 
 class TempFile(io.BytesIO):
     def __init__(self, *args, name="", **kwargs):
@@ -86,16 +87,15 @@ class UploadClient:
                     data = TempFile(data, name=filename)
                 is_last_data = chunk_num == chunks - 1
                 is_last_sample = is_last_data and path == reads[-1]
-                resp = self.execute(UPLOAD_SAMPLE, retries=retries, variables={
-                    "blob": data, "isLastData": is_last_data,
-                    "isLastSample": is_last_sample,
-                    "expectedFileSize": chunk_num * chunk_size,
-                    "data": data_id, "filename": filename,
-                    "sampleName": name, "previousData": previous_data,
+                resp = requests.post(self.url.replace("/graphql", "/upload/sample"), data={
+                    "filename": filename, "is_last_sample": is_last_sample,
+                    "is_last": is_last_data, "expected_file_size": chunk_num * chunk_size,
+                    "sample_name": name, "data": data_id, "previous_data": previous_data,
                     **(metadata or {})
-                })
-                data_id = resp["data"]["uploadDemultiplexedData"]["dataId"]
-                sample_id = resp["data"]["uploadDemultiplexedData"]["sampleId"]
+                }, files={"blob": data},
+                headers={"Authorization": self.headers["Authorization"]})
+                data_id = resp.json()["data_id"]
+                sample_id = resp.json()["sample_id"]                
                 if is_last_data:
                     previous_data.append(data_id)
                     data_id = None
