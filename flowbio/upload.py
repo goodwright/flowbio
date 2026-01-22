@@ -1,6 +1,5 @@
 """Logic for uploading data to Flow."""
 
-import io
 import os
 import io
 import math
