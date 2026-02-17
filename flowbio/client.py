@@ -1,5 +1,6 @@
 import kirjava
 import time
+from importlib.metadata import version, PackageNotFoundError
 from .upload import UploadClient
 from .samples import SamplesClient
 from .pipelines import PipelinesClient
@@ -8,12 +9,18 @@ class GraphQlError(Exception):
     pass
 
 
+try:
+    CLIENT_VERSION = version("flowbio")
+except PackageNotFoundError:
+    CLIENT_VERSION = "unknown"
+
 
 class Client(kirjava.Client, UploadClient, SamplesClient, PipelinesClient):
 
     def __init__(self, url="https://api.flow.bio/graphql"):        
         super().__init__(url)
         self.last_token_refresh = None
+        self.session.headers["User-Agent"] = f"flowbio-python/{CLIENT_VERSION}"
 
 
     def execute(self, *args, check_token=True, **kwargs):
