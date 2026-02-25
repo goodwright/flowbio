@@ -16,6 +16,15 @@ except PackageNotFoundError:
 
 
 class Client(kirjava.Client, UploadClient, SamplesClient, PipelinesClient):
+    """This is the main client used to interface with the Flow api. You can instantiate it like so::
+
+        client = flowbio.Client()
+
+    Alternatively, if you are working with a private instance of Flow, you can instantiate it with your own url pointing
+    to the Flow API::
+
+        client = flowbio.Client("https://mycompany.flow.bio/api/graphql")
+    """
 
     def __init__(self, url="https://api.flow.bio/graphql"):        
         super().__init__(url)
@@ -35,11 +44,11 @@ class Client(kirjava.Client, UploadClient, SamplesClient, PipelinesClient):
         return resp
     
 
-    def login(self, username, password):
-        """Acquires the relevant access token for the client.
+    def login(self, username: str, password: str) -> None:
+        """Logs in the client and allows it to be used to access resources that requires a logged in user.
         
-        :param str username: The username of the user.
-        :param str password: The password of the user."""
+        :param username: The username of the user.
+        :param password: The password of the user."""
         
         response = self.execute("""mutation login(
             $username: String! $password: String!

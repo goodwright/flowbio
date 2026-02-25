@@ -57,18 +57,25 @@ class UploadClient:
                 data_id = resp["data"]["uploadData"]["dataId"]
         return self.data(data_id)
 
-
-    def upload_sample(self, name, path1, path2=None, chunk_size=1_000_000, progress=False, metadata=None, use_base64=False, retries=0):
+    def upload_sample(
+        self,
+        name: str,
+        path1: str,
+        path2: str | None = None,
+        chunk_size: int = 1_000_000,
+        progress: bool = False,
+        metadata: dict | None = None,
+        use_base64: bool = False,
+    ) -> dict:
         """Uploads a sample to the server.
         
-        :param str name: The name of the sample.
-        :param str path1: The path to the first file.
-        :param str path2: The path to the second file if sample is paired-end.
-        :param int chunk_size: The size of each chunk to upload.
-        :param bool progress: Whether to show a progress bar.
-        :param dict metadata: The metadata to attach to the sample.
-        :param int retries: The number of times to retry the upload.
-        :rtype: ``dict``"""
+        :param name: The name of the sample.
+        :param path1: The path to the first file.
+        :param path2: The path to the second file if sample is paired-end.
+        :param chunk_size: The size of each chunk to upload.
+        :param progress: Whether to show a progress bar.
+        :param metadata: The metadata to attach to the sample. This must reference metadata fields defined in the Flow instance, and some of them may be required.
+        """
 
         reads = [path1, path2] if path2 else [path1]
         data_id, sample_id, previous_data = None, None, []
