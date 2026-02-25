@@ -34,7 +34,7 @@ jobs:
       - uses: actions/setup-python@v6
       - name: Install dependencies
         run: |
-          pip install sphinx==9.1.0
+          pip install sphinx==9.1.0 sphinx-autodoc-typehints==3.6.3
       - name: Sphinx build
         run: |
           make html
