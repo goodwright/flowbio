@@ -28,7 +28,7 @@ setup(
         "Programming Language :: Python :: 3.13",
     ],
     keywords="nextflow bioinformatics pipeline",
-    packages=["flowbio"],
+    packages=["flowbio", "flowbio.v2"],
     python_requires="!=2.*, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*, !=3.6.*, !=3.7.*",
-    install_requires=["tqdm", "kirjava", "requests"]
+    install_requires=["tqdm", "kirjava", "requests", "httpx>=0.28,<1"]
 )
