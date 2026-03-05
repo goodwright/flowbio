@@ -3,7 +3,7 @@ import pytest
 import respx
 
 from flowbio.v2.client import Client
-from flowbio.v2.samples import MetadataAttribute, Project, SampleResource, SampleType
+from flowbio.v2.samples import MetadataAttribute, Organism, Project, SampleResource, SampleType
 
 from tests.unit.v2.conftest import DEFAULT_BASE_URL
 
@@ -252,3 +252,41 @@ class TestGetOwnedProjects:
 
         assert len(result) == 3
         assert [p.name for p in result] == ["P1", "P2", "P3"]
+
+
+class TestGetOrganisms:
+
+    @respx.mock
+    def test_parses_api_response_into_organism_models(self) -> None:
+        organism_id = "Hs"
+        name = "Human"
+        latin_name = "Homo sapiens"
+        respx.get(f"{DEFAULT_BASE_URL}/organisms").mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "id": organism_id,
+                    "name": name,
+                    "latin_name": latin_name,
+                    "latest_fileset": {},
+                },
+            ]),
+        )
+
+        client = Client()
+        result = client.samples.get_organisms()
+
+        assert len(result) == 1
+        assert result[0] == Organism(
+            id=organism_id, name=name, latin_name=latin_name,
+        )
+
+    @respx.mock
+    def test_returns_empty_list_when_no_organisms(self) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/organisms").mock(
+            return_value=httpx.Response(200, json=[]),
+        )
+
+        client = Client()
+        result = client.samples.get_organisms()
+
+        assert result == []

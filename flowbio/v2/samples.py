@@ -69,6 +69,21 @@ class Project(BaseModel, frozen=True):
     description: str
 
 
+class Organism(BaseModel, frozen=True):
+    """An organism that a sample can be associated with.
+
+    Example::
+
+        organisms = client.samples.get_organisms()
+        for o in organisms:
+            print(f"{o.id}: {o.name} ({o.latin_name})")
+    """
+
+    id: str
+    name: str
+    latin_name: str
+
+
 class SampleResource:
     """Provides access to sample-related API endpoints.
 
@@ -132,6 +147,25 @@ class SampleResource:
                 description=item["description"],
             ),
         )
+
+    def get_organisms(self) -> list[Organism]:
+        """Return the available organisms.
+
+        Example::
+
+            organisms = client.samples.get_organisms()
+            for o in organisms:
+                print(f"{o.id}: {o.name} ({o.latin_name})")
+        """
+        response = self._transport.get("/organisms")
+        return [
+            Organism(
+                id=item["id"],
+                name=item["name"],
+                latin_name=item["latin_name"],
+            )
+            for item in response
+        ]
 
     def get_metadata_attributes(self) -> list[MetadataAttribute]:
         """Return the available metadata attributes for samples.
