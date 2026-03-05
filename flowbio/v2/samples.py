@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
+
+from flowbio.v2._pagination import PageIterator
 
 if TYPE_CHECKING:
     from flowbio.v2._transport import HttpTransport
@@ -51,6 +54,21 @@ class MetadataAttribute(BaseModel, frozen=True):
     options: list[str] | None
 
 
+class Project(BaseModel, frozen=True):
+    """A project that samples can be assigned to.
+
+    Example::
+
+        projects = client.samples.get_owned_projects()
+        for p in projects:
+            print(f"{p.id}: {p.name}")
+    """
+
+    id: str
+    name: str
+    description: str
+
+
 class SampleResource:
     """Provides access to sample-related API endpoints.
 
@@ -81,6 +99,39 @@ class SampleResource:
             )
             for item in response
         ]
+
+    def get_owned_projects(self) -> Sequence[Project]:
+        """Return the projects owned by the authenticated user.
+
+        Requires authentication. Results are paginated lazily — pages
+        are only fetched from the API as you iterate through the
+        results.
+
+        The total count is available via ``len()`` without fetching
+        all pages::
+
+            projects = client.samples.get_owned_projects()
+            print(f"You have {len(projects)} projects")
+
+        Iterate to access individual projects::
+
+            for project in client.samples.get_owned_projects():
+                print(f"{project.id}: {project.name}")
+
+        Or convert to a list to fetch everything at once::
+
+            all_projects = list(client.samples.get_owned_projects())
+        """
+        return PageIterator(
+            self._transport,
+            "/projects/owned",
+            items_key="projects",
+            item_factory=lambda item: Project(
+                id=item["id"],
+                name=item["name"],
+                description=item["description"],
+            ),
+        )
 
     def get_metadata_attributes(self) -> list[MetadataAttribute]:
         """Return the available metadata attributes for samples.

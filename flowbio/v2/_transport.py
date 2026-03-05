@@ -53,14 +53,15 @@ class HttpTransport:
         clean_path = path.lstrip("/")
         return f"{self._base_url}/{clean_path}"
 
-    def get(self, path: str) -> dict:
+    def get(self, path: str, params: dict | None = None) -> dict:
         """Send a GET request to the API.
 
         :param path: The API path to request (e.g. ``"me"`` or ``"/me"``).
+        :param params: Optional query parameters to include in the request.
         :returns: The parsed JSON response body.
         :raises FlowApiError: If the API returns a non-success status code.
         """
-        response = self._client.get(self._url(path))
+        response = self._client.get(self._url(path), params=params)
         return self._handle_response(response)
 
     def post(self, path: str, json: dict | None = None) -> dict:

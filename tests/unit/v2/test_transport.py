@@ -64,6 +64,19 @@ class TestTransportGet:
 
         assert route.called
 
+    @respx.mock
+    def test_sends_query_parameters(self) -> None:
+        route = respx.get(f"{DEFAULT_BASE_URL}/items").mock(
+            return_value=httpx.Response(200, json={}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        transport.get("/items", params={"page": 2, "count": 10})
+
+        assert route.called
+        assert route.calls[0].request.url.params["page"] == "2"
+        assert route.calls[0].request.url.params["count"] == "10"
+
 
 class TestTransportPost:
 

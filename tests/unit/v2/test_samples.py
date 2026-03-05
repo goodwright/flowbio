@@ -3,7 +3,7 @@ import pytest
 import respx
 
 from flowbio.v2.client import Client
-from flowbio.v2.samples import MetadataAttribute, SampleResource, SampleType
+from flowbio.v2.samples import MetadataAttribute, Project, SampleResource, SampleType
 
 from tests.unit.v2.conftest import DEFAULT_BASE_URL
 
@@ -182,3 +182,73 @@ class TestGetMetadataAttributes:
         result = client.samples.get_metadata_attributes()
 
         assert result[0].required_for_sample_types == ["rna_seq", "atac_seq"]
+
+
+class TestGetOwnedProjects:
+
+    @respx.mock
+    def test_parses_response_into_project_models(self) -> None:
+        project_id = "123"
+        project_name = "My Project"
+        description = "A test project"
+        respx.get(f"{DEFAULT_BASE_URL}/projects/owned").mock(
+            return_value=httpx.Response(200, json={
+                "count": 1,
+                "projects": [
+                    {
+                        "id": project_id,
+                        "name": project_name,
+                        "description": description,
+                        "extra": "ignored",
+                    },
+                ],
+            }),
+        )
+
+        client = Client()
+        result = client.samples.get_owned_projects()
+
+        assert len(result) == 1
+        assert result[0] == Project(
+            id=project_id, name=project_name, description=description,
+        )
+
+    @respx.mock
+    def test_returns_empty_sequence_when_no_projects(self) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/projects/owned").mock(
+            return_value=httpx.Response(200, json={
+                "count": 0,
+                "projects": [],
+            }),
+        )
+
+        client = Client()
+        result = client.samples.get_owned_projects()
+
+        assert len(result) == 0
+        assert list(result) == []
+
+    @respx.mock
+    def test_paginates_across_multiple_pages(self) -> None:
+        route = respx.get(f"{DEFAULT_BASE_URL}/projects/owned")
+        route.side_effect = [
+            httpx.Response(200, json={
+                "count": 3,
+                "projects": [
+                    {"id": "1", "name": "P1", "description": ""},
+                    {"id": "2", "name": "P2", "description": ""},
+                ],
+            }),
+            httpx.Response(200, json={
+                "count": 3,
+                "projects": [
+                    {"id": "3", "name": "P3", "description": ""},
+                ],
+            }),
+        ]
+
+        client = Client()
+        result = list(client.samples.get_owned_projects())
+
+        assert len(result) == 3
+        assert [p.name for p in result] == ["P1", "P2", "P3"]
