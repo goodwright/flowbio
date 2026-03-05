@@ -13,18 +13,18 @@ from flowbio.v2.exceptions import (
     NotFoundError,
 )
 
-BASE_URL = "https://app.flow.bio/api"
+from tests.unit.v2.conftest import DEFAULT_BASE_URL
 
 
 class TestTransportGet:
 
     @respx.mock
     def test_sends_request_to_base_url_plus_path(self) -> None:
-        route = respx.get(f"{BASE_URL}/me").mock(
+        route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(
             return_value=httpx.Response(200, json={"username": "testuser"}),
         )
 
-        transport = HttpTransport(BASE_URL)
+        transport = HttpTransport(DEFAULT_BASE_URL)
         transport.get("/me")
 
         assert route.called
@@ -32,22 +32,22 @@ class TestTransportGet:
     @respx.mock
     def test_returns_parsed_json(self) -> None:
         expected = {"username": "testuser"}
-        respx.get(f"{BASE_URL}/me").mock(
+        respx.get(f"{DEFAULT_BASE_URL}/me").mock(
             return_value=httpx.Response(200, json=expected),
         )
 
-        transport = HttpTransport(BASE_URL)
+        transport = HttpTransport(DEFAULT_BASE_URL)
         result = transport.get("/me")
 
         assert result == expected
 
     @respx.mock
     def test_sends_user_agent_header(self) -> None:
-        route = respx.get(f"{BASE_URL}/me").mock(
+        route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(
             return_value=httpx.Response(200, json={}),
         )
 
-        transport = HttpTransport(BASE_URL)
+        transport = HttpTransport(DEFAULT_BASE_URL)
         transport.get("/me")
 
         user_agent = route.calls[0].request.headers["user-agent"]
@@ -55,11 +55,11 @@ class TestTransportGet:
 
     @respx.mock
     def test_path_without_leading_slash(self) -> None:
-        route = respx.get(f"{BASE_URL}/me").mock(
+        route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(
             return_value=httpx.Response(200, json={}),
         )
 
-        transport = HttpTransport(BASE_URL)
+        transport = HttpTransport(DEFAULT_BASE_URL)
         transport.get("me")
 
         assert route.called
@@ -70,11 +70,11 @@ class TestTransportPost:
     @respx.mock
     def test_sends_json_body(self) -> None:
         request_body = {"username": "testuser", "password": "testpass"}
-        route = respx.post(f"{BASE_URL}/login").mock(
+        route = respx.post(f"{DEFAULT_BASE_URL}/login").mock(
             return_value=httpx.Response(200, json={"token": "jwt"}),
         )
 
-        transport = HttpTransport(BASE_URL)
+        transport = HttpTransport(DEFAULT_BASE_URL)
         transport.post("/login", json=request_body)
 
         sent_body = json.loads(route.calls[0].request.content)
@@ -83,22 +83,22 @@ class TestTransportPost:
     @respx.mock
     def test_returns_parsed_json(self) -> None:
         expected = {"token": "jwt.token.here"}
-        respx.post(f"{BASE_URL}/login").mock(
+        respx.post(f"{DEFAULT_BASE_URL}/login").mock(
             return_value=httpx.Response(200, json=expected),
         )
 
-        transport = HttpTransport(BASE_URL)
+        transport = HttpTransport(DEFAULT_BASE_URL)
         result = transport.post("/login", json={"username": "x", "password": "y"})
 
         assert result == expected
 
     @respx.mock
     def test_path_without_leading_slash(self) -> None:
-        route = respx.post(f"{BASE_URL}/login").mock(
+        route = respx.post(f"{DEFAULT_BASE_URL}/login").mock(
             return_value=httpx.Response(200, json={}),
         )
 
-        transport = HttpTransport(BASE_URL)
+        transport = HttpTransport(DEFAULT_BASE_URL)
         transport.post("login", json={})
 
         assert route.called
@@ -109,11 +109,11 @@ class TestTransportErrorHandling:
     @respx.mock
     def test_post_raises_bad_request_error_on_400(self) -> None:
         error_message = "Invalid credentials"
-        respx.post(f"{BASE_URL}/login").mock(
+        respx.post(f"{DEFAULT_BASE_URL}/login").mock(
             return_value=httpx.Response(400, json={"error": error_message}),
         )
 
-        transport = HttpTransport(BASE_URL)
+        transport = HttpTransport(DEFAULT_BASE_URL)
 
         with pytest.raises(BadRequestError) as exc_info:
             transport.post("/login", json={"username": "x", "password": "y"})
@@ -124,11 +124,11 @@ class TestTransportErrorHandling:
     @respx.mock
     def test_get_raises_bad_request_error_on_400(self) -> None:
         error_message = "No refresh token supplied"
-        respx.get(f"{BASE_URL}/token").mock(
+        respx.get(f"{DEFAULT_BASE_URL}/token").mock(
             return_value=httpx.Response(400, json={"error": error_message}),
         )
 
-        transport = HttpTransport(BASE_URL)
+        transport = HttpTransport(DEFAULT_BASE_URL)
 
         with pytest.raises(BadRequestError) as exc_info:
             transport.get("/token")
@@ -139,11 +139,11 @@ class TestTransportErrorHandling:
     @respx.mock
     def test_raises_authentication_error_on_401(self) -> None:
         error_message = "Not authenticated"
-        respx.get(f"{BASE_URL}/me").mock(
+        respx.get(f"{DEFAULT_BASE_URL}/me").mock(
             return_value=httpx.Response(401, json={"error": error_message}),
         )
 
-        transport = HttpTransport(BASE_URL)
+        transport = HttpTransport(DEFAULT_BASE_URL)
 
         with pytest.raises(AuthenticationError) as exc_info:
             transport.get("/me")
@@ -154,11 +154,11 @@ class TestTransportErrorHandling:
     @respx.mock
     def test_raises_not_found_error_on_404(self) -> None:
         error_message = "Not found"
-        respx.get(f"{BASE_URL}/users/999").mock(
+        respx.get(f"{DEFAULT_BASE_URL}/users/999").mock(
             return_value=httpx.Response(404, json={"error": error_message}),
         )
 
-        transport = HttpTransport(BASE_URL)
+        transport = HttpTransport(DEFAULT_BASE_URL)
 
         with pytest.raises(NotFoundError) as exc_info:
             transport.get("/users/999")
@@ -169,11 +169,11 @@ class TestTransportErrorHandling:
     @respx.mock
     def test_raises_flow_api_error_for_unexpected_status_codes(self) -> None:
         error_message = "Internal server error"
-        respx.get(f"{BASE_URL}/something").mock(
+        respx.get(f"{DEFAULT_BASE_URL}/something").mock(
             return_value=httpx.Response(500, json={"error": error_message}),
         )
 
-        transport = HttpTransport(BASE_URL)
+        transport = HttpTransport(DEFAULT_BASE_URL)
 
         with pytest.raises(FlowApiError) as exc_info:
             transport.get("/something")
@@ -186,12 +186,12 @@ class TestTransportTokenManagement:
 
     @respx.mock
     def test_set_token_adds_authorization_header(self) -> None:
-        route = respx.get(f"{BASE_URL}/me").mock(
+        route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(
             return_value=httpx.Response(200, json={}),
         )
         token = "jwt.token.here"
 
-        transport = HttpTransport(BASE_URL)
+        transport = HttpTransport(DEFAULT_BASE_URL)
         transport.set_token(token)
         transport.get("/me")
 

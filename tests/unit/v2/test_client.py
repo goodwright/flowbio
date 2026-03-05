@@ -8,7 +8,7 @@ from flowbio.v2.auth import UsernamePasswordCredentials
 from flowbio.v2.exceptions import BadRequestError
 from flowbio.v2.client import Client
 
-DEFAULT_BASE_URL = "https://app.flow.bio/api"
+from tests.unit.v2.conftest import DEFAULT_BASE_URL
 
 
 class TestClientInit:

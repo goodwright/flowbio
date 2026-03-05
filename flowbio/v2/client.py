@@ -1,5 +1,6 @@
 from flowbio.v2._transport import HttpTransport
 from flowbio.v2.auth import Credentials
+from flowbio.v2.samples import SampleResource
 
 
 class Client:
@@ -23,6 +24,12 @@ class Client:
 
     def __init__(self, base_url: str = "https://app.flow.bio/api") -> None:
         self._transport = HttpTransport(base_url)
+        self._samples = SampleResource(self._transport)
+
+    @property
+    def samples(self) -> SampleResource:
+        """Access sample-related operations (types, metadata, upload)."""
+        return self._samples
 
     def log_in(self, credentials: Credentials) -> None:
         """Authenticate with the Flow API.
