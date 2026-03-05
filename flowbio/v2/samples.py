@@ -105,15 +105,7 @@ class SampleResource:
             for st in sample_types:
                 print(f"{st.identifier}: {st.name}")
         """
-        response = self._transport.get("/samples/types")
-        return [
-            SampleType(
-                identifier=item["identifier"],
-                name=item["name"],
-                description=item["description"],
-            )
-            for item in response
-        ]
+        return [SampleType(**item) for item in self._transport.get("/samples/types")]
 
     def get_owned_projects(self) -> Sequence[Project]:
         """Return the projects owned by the authenticated user.
@@ -141,11 +133,7 @@ class SampleResource:
             self._transport,
             "/projects/owned",
             items_key="projects",
-            item_factory=lambda item: Project(
-                id=item["id"],
-                name=item["name"],
-                description=item["description"],
-            ),
+            item_factory=lambda item: Project(**item),
         )
 
     def get_organisms(self) -> list[Organism]:
@@ -157,15 +145,7 @@ class SampleResource:
             for o in organisms:
                 print(f"{o.id}: {o.name} ({o.latin_name})")
         """
-        response = self._transport.get("/organisms")
-        return [
-            Organism(
-                id=item["id"],
-                name=item["name"],
-                latin_name=item["latin_name"],
-            )
-            for item in response
-        ]
+        return [Organism(**item) for item in self._transport.get("/organisms")]
 
     def get_metadata_attributes(self) -> list[MetadataAttribute]:
         """Return the available metadata attributes for samples.
@@ -179,24 +159,16 @@ class SampleResource:
             attributes = client.samples.get_metadata_attributes()
             required = [a for a in attributes if a.required]
         """
-        response = self._transport.get("/samples/metadata")
-        attributes = []
-        for item in response:
-            required_for_sample_types = [
-                link["sample_type_identifier"]
-                for link in item.get("sample_type_links", [])
-                if link.get("required")
-            ]
-            options = self._resolve_options(item)
-            attributes.append(MetadataAttribute(
-                identifier=item["identifier"],
-                name=item["name"],
-                description=item["description"],
-                required=item["required"],
-                required_for_sample_types=required_for_sample_types,
-                options=options,
-            ))
-        return attributes
+        return [self._create_metadata_attribute(item) for item in (self._transport.get("/samples/metadata"))]
+
+    def _create_metadata_attribute(self, item: dict) -> MetadataAttribute:
+        item["required_for_sample_types"] = [
+            link["sample_type_identifier"]
+            for link in item.get("sample_type_links", [])
+            if link.get("required")
+        ]
+        item["options"] = self._resolve_options(item)
+        return MetadataAttribute(**item)
 
     def _resolve_options(self, item: dict) -> list[str] | None:
         if item.get("allow_user_terms"):
