@@ -1,4 +1,4 @@
-from flowbio.v2.auth import UsernamePasswordCredentials
+from flowbio.v2.auth import TokenCredentials, UsernamePasswordCredentials
 from flowbio.v2.client import Client, ClientConfig
 from flowbio.v2.samples import MetadataAttribute, Organism, Project, Sample, SampleType
 
@@ -10,5 +10,6 @@ __all__ = [
     "Project",
     "Sample",
     "SampleType",
+    "TokenCredentials",
     "UsernamePasswordCredentials",
 ]

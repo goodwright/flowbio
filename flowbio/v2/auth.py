@@ -23,6 +23,35 @@ class Credentials(ABC):
         ...
 
 
+class TokenCredentials(Credentials):
+    """Authenticates using an existing JWT token.
+
+    Sets the token directly on the transport without making any HTTP
+    requests. Useful when a token has already been obtained through
+    another mechanism (e.g. the v1 client).
+
+    :param token: The JWT access token.
+
+    Example::
+
+        from flowbio.v2 import Client
+        from flowbio.v2.auth import TokenCredentials
+
+        client = Client()
+        client.log_in(TokenCredentials(token="your.jwt.token"))
+    """
+
+    def __init__(self, token: str) -> None:
+        self._token = token
+
+    def authenticate(self, transport: HttpTransport) -> None:
+        """Set the token on the transport without making HTTP requests.
+
+        :param transport: The HTTP transport to authenticate with.
+        """
+        transport.set_token(self._token)
+
+
 class UsernamePasswordCredentials(Credentials):
     """Authenticates to the Flow API with a username and password.
 
