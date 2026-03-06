@@ -1,3 +1,4 @@
 kirjava==0.4.0
 tqdm
 httpx==0.28.1
+pydantic>=2,<3
