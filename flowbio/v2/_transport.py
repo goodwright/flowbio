@@ -64,15 +64,30 @@ class HttpTransport:
         response = self._client.get(self._url(path), params=params)
         return self._handle_response(response)
 
-    def post(self, path: str, json: dict | None = None) -> dict:
+    def post(
+        self,
+        path: str,
+        json: dict | None = None,
+        data: dict | None = None,
+        files: dict | None = None,
+    ) -> dict:
         """Send a POST request to the API.
+
+        Use ``json`` for JSON-encoded bodies, or ``data``/``files`` for
+        multipart form data.
 
         :param path: The API path to request (e.g. ``"login"`` or ``"/login"``).
         :param json: Optional JSON body to send with the request.
+        :param data: Optional form fields for multipart requests.
+        :param files: Optional file fields for multipart requests,
+            following the httpx file format
+            (e.g. ``{"file": ("name.txt", bytes, "text/plain")}``).
         :returns: The parsed JSON response body.
         :raises FlowApiError: If the API returns a non-success status code.
         """
-        response = self._client.post(self._url(path), json=json)
+        response = self._client.post(
+            self._url(path), json=json, data=data, files=files,
+        )
         return self._handle_response(response)
 
     def set_token(self, token: str) -> None:

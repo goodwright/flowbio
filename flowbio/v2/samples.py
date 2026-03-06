@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
+from tqdm import tqdm
 
 from flowbio.v2._pagination import PageIterator
 
 if TYPE_CHECKING:
+    from flowbio.v2.client import ClientConfig
     from flowbio.v2._transport import HttpTransport
 
 
@@ -84,6 +88,17 @@ class Organism(BaseModel, frozen=True):
     latin_name: str
 
 
+class Sample(BaseModel, frozen=True):
+    """A sample on the Flow platform.
+
+    Returned by :meth:`SampleResource.upload_sample`.
+
+    :param id: The unique identifier of the sample.
+    """
+
+    id: str
+
+
 class SampleResource:
     """Provides access to sample-related API endpoints.
 
@@ -93,8 +108,9 @@ class SampleResource:
         sample_types = client.samples.get_types()
     """
 
-    def __init__(self, transport: HttpTransport) -> None:
+    def __init__(self, transport: HttpTransport, config: ClientConfig) -> None:
         self._transport = transport
+        self._config = config
 
     def get_types(self) -> list[SampleType]:
         """Return the available sample types.
@@ -169,6 +185,158 @@ class SampleResource:
         ]
         item["options"] = self._resolve_options(item)
         return MetadataAttribute(**item)
+
+    def upload_sample(
+        self,
+        name: str,
+        sample_type: str,
+        data: dict[str, Path],
+        metadata: dict[str, str] | None = None,
+        project_id: str | None = None,
+        organism_id: str | None = None,
+    ) -> Sample:
+        """Upload a sample with one or more files.
+
+        Files are uploaded in chunks to support large files without
+        loading them entirely into memory. Multiple files are linked
+        together into a single sample. Chunk size and progress display
+        are controlled via :class:`ClientConfig`.
+
+        Requires authentication.
+
+        :param name: The name of the sample.
+        :param sample_type: The sample type identifier
+            (e.g. ``"RNA-Seq"``).
+        :param data: A mapping of data type identifiers to file paths.
+            For sequencing samples, use ``reads1`` and optionally
+            ``reads2`` — these are the only valid reads keys, and
+            ``reads1`` is always uploaded first::
+
+                # Single-end
+                {"reads1": Path("sample.fastq.gz")}
+
+                # Paired-end
+                {"reads1": Path("R1.fastq.gz"), "reads2": Path("R2.fastq.gz")}
+
+            For non-sequencing sample types, any key names are
+            accepted and files are uploaded in the order given::
+
+                {"input": Path("counts.csv")}
+
+        :param metadata: Optional metadata key-value pairs.
+        :param project_id: Optional project ID to assign the sample to.
+        :param organism_id: Optional organism ID to associate with.
+        :returns: The created sample's ID and data ID.
+        :raises ValueError: If reads keys are invalid (e.g. ``reads3``)
+            or ``reads2`` is provided without ``reads1``.
+
+        Example::
+
+            from pathlib import Path
+
+            result = client.samples.upload_sample(
+                name="My RNA-Seq Sample",
+                sample_type="RNA-Seq",
+                data={"reads1": Path("reads_R1.fastq.gz")},
+                metadata={"strandedness": "forward"},
+            )
+            print(f"Sample ID: {result.sample_id}")
+        """
+        files = self._ordered_files(data)
+        previous_data_ids: list[str] = []
+        result: dict = {}
+        for file_index, (data_type, file_path) in enumerate(files):
+            is_last_file = file_index == len(files) - 1
+            result = self._upload_file(
+                file_path=file_path,
+                is_last_file=is_last_file,
+                previous_data_ids=previous_data_ids,
+                sample_fields=self._build_sample_fields(
+                    name, sample_type, metadata, project_id, organism_id,
+                ),
+            )
+            if not is_last_file:
+                previous_data_ids.append(result["data_id"])
+        return Sample(id=result["sample_id"])
+
+    def _upload_file(
+        self,
+        file_path: Path,
+        is_last_file: bool,
+        previous_data_ids: list[str],
+        sample_fields: dict[str, str],
+    ) -> dict:
+        chunk_size = self._config.chunk_size
+        file_size = file_path.stat().st_size
+        num_chunks = max(1, math.ceil(file_size / chunk_size))
+        data_id: str | None = None
+        result: dict = {}
+        chunks = range(num_chunks)
+        if self._config.show_progress:
+            chunks = tqdm(
+                chunks,
+                desc=f"Uploading {file_path.name}",
+                unit="chunk",
+            )
+        for chunk_index in chunks:
+            is_last_chunk = chunk_index == num_chunks - 1
+            is_last_sample = is_last_file and is_last_chunk
+            with open(file_path, "rb") as f:
+                f.seek(chunk_index * chunk_size)
+                chunk = f.read(chunk_size)
+            form_data: dict[str, str] = {
+                "filename": file_path.name,
+                "expected_file_size": str(chunk_index * chunk_size),
+                "is_last": is_last_chunk,
+                "data": data_id,
+                "is_last_sample": is_last_sample,
+                "previous_data": previous_data_ids,
+                **(sample_fields or {}),
+            }
+            result = self._transport.post(
+                "/upload/sample",
+                data=form_data,
+                files={"blob": (file_path.name, chunk, "application/octet-stream")},
+            )
+            data_id = result["data_id"]
+        return result
+
+    _VALID_READS_KEYS = {"reads1", "reads2"}
+
+    @staticmethod
+    def _ordered_files(data: dict[str, Path]) -> list[tuple[str, Path]]:
+        has_reads_keys = any(k.startswith("reads") for k in data)
+        if not has_reads_keys:
+            return list(data.items())
+        invalid = set(data.keys()) - SampleResource._VALID_READS_KEYS
+        if invalid:
+            raise ValueError(
+                f"Invalid reads key(s): {invalid}. "
+                f"Valid keys are: {SampleResource._VALID_READS_KEYS}"
+            )
+        if "reads2" in data and "reads1" not in data:
+            raise ValueError("reads1 is required when reads2 is provided")
+        return sorted(data.items(), key=lambda item: item[0])
+
+    @staticmethod
+    def _build_sample_fields(
+        name: str,
+        sample_type: str,
+        metadata: dict[str, str] | None,
+        project_id: str | None,
+        organism_id: str | None,
+    ) -> dict[str, str]:
+        fields: dict[str, str] = {
+            "sample_name": name,
+            "sample_type": sample_type,
+        }
+        if metadata:
+            fields.update(metadata)
+        if project_id:
+            fields["project"] = project_id
+        if organism_id:
+            fields["organism"] = organism_id
+        return fields
 
     def _resolve_options(self, item: dict) -> list[str] | None:
         if item.get("allow_user_terms"):

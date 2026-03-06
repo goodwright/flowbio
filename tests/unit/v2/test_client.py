@@ -5,8 +5,8 @@ import pytest
 import respx
 
 from flowbio.v2.auth import UsernamePasswordCredentials
+from flowbio.v2.client import Client, ClientConfig
 from flowbio.v2.exceptions import BadRequestError
-from flowbio.v2.client import Client
 
 from tests.unit.v2.conftest import DEFAULT_BASE_URL
 
@@ -102,3 +102,21 @@ class TestClientLogIn:
             ))
 
         assert exc_info.value.message == error_message
+
+
+class TestClientConfig:
+
+    def test_default_config_values(self) -> None:
+        config = ClientConfig()
+
+        assert config.chunk_size == 1_000_000
+        assert config.show_progress is True
+
+    def test_config_is_immutable(self) -> None:
+        config = ClientConfig()
+
+        with pytest.raises(AttributeError):
+            config.chunk_size = 5_000_000
+
+    def test_client_accepts_custom_config(self) -> None:
+        Client(config=ClientConfig(chunk_size=5_000_000))

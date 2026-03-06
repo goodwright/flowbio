@@ -1,9 +1,19 @@
+from pathlib import Path
+from unittest.mock import ANY
+
 import httpx
 import pytest
 import respx
 
-from flowbio.v2.client import Client
-from flowbio.v2.samples import MetadataAttribute, Organism, Project, SampleResource, SampleType
+from flowbio.v2.client import Client, ClientConfig
+from flowbio.v2.samples import (
+    MetadataAttribute,
+    Organism,
+    Project,
+    SampleResource,
+    SampleType,
+    Sample,
+)
 
 from tests.unit.v2.conftest import DEFAULT_BASE_URL
 
@@ -290,3 +300,194 @@ class TestGetOrganisms:
         result = client.samples.get_organisms()
 
         assert result == []
+
+
+class TestUploadSample:
+
+    @respx.mock
+    def test_single_file_upload(self, tmp_path: Path) -> None:
+        file_content = b"ATCGATCG"
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(file_content)
+        sample_id = "sample_123"
+        route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample").mock(
+            return_value=httpx.Response(200, json={
+                "sample_id": sample_id,
+                "data_id": "data_456",
+            }),
+        )
+
+        client = Client()
+        result = client.samples.upload_sample(
+            name="My Sample",
+            sample_type="rna_seq",
+            data={"reads1": file_path},
+        )
+
+        assert result == Sample(id=sample_id)
+        assert route.call_count == 1
+        request = route.calls[0].request
+        assert b"is_last_sample" in request.content
+        assert b"My Sample" in request.content
+        assert b"rna_seq" in request.content
+
+    @respx.mock
+    def test_passes_metadata_as_form_fields(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"ATCG")
+        respx.post(f"{DEFAULT_BASE_URL}/upload/sample").mock(
+            return_value=httpx.Response(200, json={
+                "sample_id": "s1", "data_id": "d1",
+            }),
+        )
+
+        client = Client()
+        client.samples.upload_sample(
+            name="My Sample",
+            sample_type="rna_seq",
+            data={"reads1": file_path},
+            metadata={"strandedness": "forward"},
+        )
+
+        request = respx.calls[0].request
+        assert b"strandedness" in request.content
+
+    @respx.mock
+    def test_passes_project_and_organism(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"ATCG")
+        respx.post(f"{DEFAULT_BASE_URL}/upload/sample").mock(
+            return_value=httpx.Response(200, json={
+                "sample_id": "s1", "data_id": "d1",
+            }),
+        )
+
+        client = Client()
+        client.samples.upload_sample(
+            name="My Sample",
+            sample_type="rna_seq",
+            data={"reads1": file_path},
+            project_id="proj_1",
+            organism_id="Hs",
+        )
+
+        request = respx.calls[0].request
+        assert b"proj_1" in request.content
+        assert b"Hs" in request.content
+
+    @respx.mock
+    def test_two_file_upload(self, tmp_path: Path) -> None:
+        file1 = tmp_path / "R1.fastq"
+        file2 = tmp_path / "R2.fastq"
+        file1.write_bytes(b"ATCG")
+        file2.write_bytes(b"GCTA")
+        first_data_id = "data_1"
+        route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample")
+        route.side_effect = [
+            httpx.Response(200, json={
+                "sample_id": None, "data_id": first_data_id,
+            }),
+            httpx.Response(200, json={
+                "sample_id": "sample_1", "data_id": "data_2",
+            }),
+        ]
+
+        client = Client()
+        result = client.samples.upload_sample(
+            name="Paired Sample",
+            sample_type="rna_seq",
+            data={"reads1": file1, "reads2": file2},
+        )
+
+        assert result == Sample(id="sample_1")
+        assert route.call_count == 2
+        second_request = route.calls[1].request
+        assert b"previous_data" in second_request.content
+        assert first_data_id.encode() in second_request.content
+
+    @respx.mock
+    def test_uploads_in_chunks(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"A" * 100)
+        route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample")
+        route.side_effect = [
+            httpx.Response(200, json={"sample_id": None, "data_id": "d1"}),
+            httpx.Response(200, json={"sample_id": None, "data_id": "d1"}),
+            httpx.Response(200, json={"sample_id": "s1", "data_id": "d1"}),
+        ]
+
+        client = Client(config=ClientConfig(chunk_size=40, show_progress=False))
+        client.samples.upload_sample(
+            name="My Sample",
+            sample_type="rna_seq",
+            data={"reads1": file_path},
+        )
+
+        assert route.call_count == 3
+
+    def test_rejects_invalid_reads_key(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"ATCG")
+
+        client = Client()
+
+        with pytest.raises(ValueError, match="reads3"):
+            client.samples.upload_sample(
+                name="Bad Sample",
+                sample_type="rna_seq",
+                data={"reads1": file_path, "reads3": file_path},
+            )
+
+    def test_rejects_reads2_without_reads1(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"ATCG")
+
+        client = Client()
+
+        with pytest.raises(ValueError, match="reads1"):
+            client.samples.upload_sample(
+                name="Bad Sample",
+                sample_type="rna_seq",
+                data={"reads2": file_path},
+            )
+
+    @respx.mock
+    def test_reads_keys_are_uploaded_in_order(self, tmp_path: Path) -> None:
+        file1 = tmp_path / "R1.fastq"
+        file2 = tmp_path / "R2.fastq"
+        file1.write_bytes(b"READ1")
+        file2.write_bytes(b"READ2")
+        route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample")
+        route.side_effect = [
+            httpx.Response(200, json={"sample_id": None, "data_id": "d1"}),
+            httpx.Response(200, json={"sample_id": "s1", "data_id": "d2"}),
+        ]
+
+        client = Client()
+        client.samples.upload_sample(
+            name="Paired",
+            sample_type="rna_seq",
+            data={"reads2": file2, "reads1": file1},
+        )
+
+        assert b"READ1" in route.calls[0].request.content
+        assert b"READ2" in route.calls[1].request.content
+
+    @respx.mock
+    def test_non_reads_keys_are_accepted(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "counts.csv"
+        file_path.write_bytes(b"gene,count")
+        respx.post(f"{DEFAULT_BASE_URL}/upload/sample").mock(
+            return_value=httpx.Response(200, json={
+                "sample_id": "s1", "data_id": "d1",
+            }),
+        )
+
+        client = Client()
+        result = client.samples.upload_sample(
+            name="Word Count",
+            sample_type="word_count",
+            data={"input": file_path},
+        )
+
+        assert result == Sample(id="s1")

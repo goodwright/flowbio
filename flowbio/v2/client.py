@@ -1,6 +1,31 @@
+from dataclasses import dataclass
+
 from flowbio.v2._transport import HttpTransport
 from flowbio.v2.auth import Credentials
 from flowbio.v2.samples import SampleResource
+
+
+@dataclass(frozen=True)
+class ClientConfig:
+    """Configuration for the Flow API client.
+
+    :param chunk_size: Size of each upload chunk in bytes.
+        Defaults to 1 MB.
+    :param show_progress: Whether to display progress bars during
+        file uploads. Defaults to ``True``.
+
+    Example::
+
+        from flowbio.v2 import Client, ClientConfig
+
+        client = Client(config=ClientConfig(
+            chunk_size=5_000_000,
+            show_progress=False,
+        ))
+    """
+
+    chunk_size: int = 1_000_000
+    show_progress: bool = True
 
 
 class Client:
@@ -20,11 +45,18 @@ class Client:
 
     :param base_url: The base URL of the Flow API. Defaults to
         ``"https://app.flow.bio/api"``.
+    :param config: Optional client configuration. If not provided,
+        defaults are used.
     """
 
-    def __init__(self, base_url: str = "https://app.flow.bio/api") -> None:
+    def __init__(
+        self,
+        base_url: str = "https://app.flow.bio/api",
+        config: ClientConfig | None = None,
+    ) -> None:
         self._transport = HttpTransport(base_url)
-        self._samples = SampleResource(self._transport)
+        self._config = config or ClientConfig()
+        self._samples = SampleResource(self._transport, self._config)
 
     @property
     def samples(self) -> SampleResource:

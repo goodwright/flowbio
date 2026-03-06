@@ -117,6 +117,78 @@ class TestTransportPost:
         assert route.called
 
 
+class TestTransportPostMultipart:
+
+    @respx.mock
+    def test_sends_multipart_form_data(self) -> None:
+        route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample").mock(
+            return_value=httpx.Response(200, json={"id": "123"}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        transport.post(
+            "/upload/sample",
+            data={"sample_name": "test"},
+            files={"file": ("test.txt", b"file content", "text/plain")},
+        )
+
+        assert route.called
+        content_type = route.calls[0].request.headers["content-type"]
+        assert "multipart/form-data" in content_type
+
+    @respx.mock
+    def test_returns_parsed_json(self) -> None:
+        expected = {"id": "123", "data_id": "456"}
+        respx.post(f"{DEFAULT_BASE_URL}/upload/sample").mock(
+            return_value=httpx.Response(200, json=expected),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        result = transport.post(
+            "/upload/sample",
+            data={"sample_name": "test"},
+            files={"file": ("test.txt", b"content", "text/plain")},
+        )
+
+        assert result == expected
+
+    @respx.mock
+    def test_raises_bad_request_error_on_400(self) -> None:
+        error_message = "Invalid sample"
+        respx.post(f"{DEFAULT_BASE_URL}/upload/sample").mock(
+            return_value=httpx.Response(400, json={"error": error_message}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(BadRequestError) as exc_info:
+            transport.post(
+                "/upload/sample",
+                data={"sample_name": "test"},
+                files={"file": ("test.txt", b"content", "text/plain")},
+            )
+
+        assert exc_info.value.message == error_message
+
+    @respx.mock
+    def test_raises_authentication_error_on_401(self) -> None:
+        error_message = "Not authenticated"
+        respx.post(f"{DEFAULT_BASE_URL}/upload/sample").mock(
+            return_value=httpx.Response(401, json={"error": error_message}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(AuthenticationError) as exc_info:
+            transport.post(
+                "/upload/sample",
+                data={"sample_name": "test"},
+                files={"file": ("test.txt", b"content", "text/plain")},
+            )
+
+        assert exc_info.value.message == error_message
+
+
 class TestTransportErrorHandling:
 
     @respx.mock
