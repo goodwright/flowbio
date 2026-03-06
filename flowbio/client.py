@@ -16,7 +16,11 @@ except PackageNotFoundError:
 
 
 class Client(kirjava.Client, UploadClient, SamplesClient, PipelinesClient):
-    """This is the main client used to interface with the Flow api. You can instantiate it like so::
+    """
+    NB: This class is being deprecated in favour of :class:`flowbio.v2.Client`. If you are able to use the v2
+    client we highly recommend you do so.
+
+    This is the legacy client used to interface with the Flow api. You can instantiate it like so::
 
         client = flowbio.Client()
 

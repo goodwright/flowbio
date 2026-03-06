@@ -1,3 +1,23 @@
+"""
+To authenticate, pass credentials to :meth:`Client.log_in <flowbio.v2.Client.log_in>`.
+
+**Username and password** — the most common method::
+
+    from flowbio.v2 import Client, UsernamePasswordCredentials
+
+    client = Client()
+    client.log_in(UsernamePasswordCredentials(
+        username="alice", password="s3cret",
+    ))
+
+**Existing token** — useful when you already have a token::
+
+    from flowbio.v2 import Client
+    from flowbio.v2.auth import TokenCredentials
+
+    client = Client()
+    client.log_in(TokenCredentials(token="your.jwt.token"))
+"""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

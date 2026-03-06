@@ -14,7 +14,7 @@ class ClientConfig:
     :param show_progress: Whether to display progress bars during
         file uploads. Defaults to ``True``.
 
-    Example::
+    Example usage::
 
         from flowbio.v2 import Client, ClientConfig
 
@@ -43,6 +43,10 @@ class Client:
             username="alice", password="s3cret",
         ))
 
+    If you are connecting to a private instance of Flow, you can pass that in the url parameter of the constructor::
+
+        client = Client(base_url="https://mycompany.flow.bio/api")
+
     :param base_url: The base URL of the Flow API. Defaults to
         ``"https://app.flow.bio/api"``.
     :param config: Optional client configuration. If not provided,
@@ -70,7 +74,7 @@ class Client:
         the authentication flow and stores the access token for
         subsequent requests.
 
-        :param credentials: The credentials to authenticate with.
+        :param credentials: The credentials to authenticate with. See :mod:`flowbio.v2.auth` for details.
         :raises BadRequestError: If the credentials are invalid.
         """
         credentials.authenticate(self._transport)

@@ -1,3 +1,29 @@
+"""
+All sample operations are accessed via :attr:`Client.samples <flowbio.v2.Client.samples>`.
+
+List sample types, metadata attributes, organisms, and projects::
+
+    sample_types = client.samples.get_types()
+    attributes = client.samples.get_metadata_attributes()
+    organisms = client.samples.get_organisms()
+    projects = client.samples.get_owned_projects()
+
+Upload with metadata, project, and organism::
+
+    from pathlib import Path
+
+    sample = client.samples.upload_sample(
+        name="Paired-end Sample",
+        sample_type="RNA-Seq",
+        data={
+            "reads1": Path("R1.fastq.gz"),
+            "reads2": Path("R2.fastq.gz"),
+        },
+        metadata={"strandedness": "reverse"},
+        project_id="proj_123",
+        organism_id="org_456",
+    )
+"""
 from __future__ import annotations
 
 import math
@@ -18,6 +44,10 @@ if TYPE_CHECKING:
 class SampleType(BaseModel, frozen=True):
     """A type of sample that can be uploaded to the Flow platform.
 
+    :param identifier: Unique identifier for this sample type.
+    :param name: Human-readable display name.
+    :param description: Explanation of what this sample type represents.
+
     Example::
 
         sample_types = client.samples.get_types()
@@ -31,7 +61,8 @@ class SampleType(BaseModel, frozen=True):
 
 
 class MetadataAttribute(BaseModel, frozen=True):
-    """A metadata attribute that can be attached to a sample.
+    """A metadata attribute that can be attached to a sample. See :ref:`metadata-attributes` for a more detailed
+    explanation.
 
     :param identifier: Unique identifier for this attribute.
     :param name: Human-readable display name.
@@ -61,6 +92,10 @@ class MetadataAttribute(BaseModel, frozen=True):
 class Project(BaseModel, frozen=True):
     """A project that samples can be assigned to.
 
+    :param id: Unique identifier for this project.
+    :param name: Human-readable display name.
+    :param description: Explanation of what this project is for.
+
     Example::
 
         projects = client.samples.get_owned_projects()
@@ -76,6 +111,10 @@ class Project(BaseModel, frozen=True):
 class Organism(BaseModel, frozen=True):
     """An organism that a sample can be associated with.
 
+    :param id: Unique identifier for this organism.
+    :param name: Common name.
+    :param latin_name: Scientific (Latin) name.
+
     Example::
 
         organisms = client.samples.get_organisms()
@@ -89,9 +128,9 @@ class Organism(BaseModel, frozen=True):
 
 
 class Sample(BaseModel, frozen=True):
-    """A sample on the Flow platform.
+    """A sample on the Flow platform. For now this only includes id, but when we
+    add more methods to retrieve samples with more detail, more fields will be added.
 
-    Returned by :meth:`SampleResource.upload_sample`.
 
     :param id: The unique identifier of the sample.
     """
@@ -111,6 +150,81 @@ class SampleResource:
     def __init__(self, transport: HttpTransport, config: ClientConfig) -> None:
         self._transport = transport
         self._config = config
+
+    def upload_sample(
+        self,
+        name: str,
+        sample_type: str,
+        data: dict[str, Path],
+        metadata: dict[str, str] | None = None,
+        project_id: str | None = None,
+        organism_id: str | None = None,
+    ) -> Sample:
+        """Upload a sample with one or more files.
+
+        Multiple files are linked together into a single sample. Chunk size and progress display
+        are controlled via :class:`flowbio.v2.ClientConfig`.
+
+        Requires authentication.
+
+        Example::
+
+            from pathlib import Path
+
+            result = client.samples.upload_sample(
+                name="My RNA-Seq Sample",
+                sample_type="RNA-Seq",
+                data={"reads1": Path("reads_R1.fastq.gz")},
+                metadata={"strandedness": "forward"},
+            )
+            print(f"Sample ID: {result.sample_id}")
+
+        :param name: The name of the sample.
+        :param sample_type: The sample type identifier
+            (e.g. ``"RNA-Seq"``). This must be a valid sample type specified in the Flow application. You can get valid
+            sample types from :meth:`get_types`.
+        :param data: A mapping of data type identifiers to file paths.
+            For sequencing samples, use ``reads1`` and optionally
+            ``reads2`` — these are the only valid reads keys, and
+            ``reads1`` is always uploaded first::
+
+                # Single-end
+                {"reads1": Path("sample.fastq.gz")}
+
+                # Paired-end
+                {"reads1": Path("R1.fastq.gz"), "reads2": Path("R2.fastq.gz")}
+
+            For non-sequencing sample types, any key names are
+            accepted and files are uploaded in the order given::
+
+                {"input": Path("counts.csv")}
+
+        :param metadata: Optional metadata key-value pairs. See
+            :ref:`metadata-attributes` for details on required attributes.
+        :param project_id: Optional project ID to assign the sample to. This must be a project you own. You can see
+            available projects by calling :meth:`get_owned_projects`.
+        :param organism_id: Optional organism ID to associate with.
+        :raises ValueError: If reads keys are invalid (e.g. ``reads3``)
+            or ``reads2`` is provided without ``reads1``.
+        :raises FlowApiError: If any of the data is invalid, e.g. sample_type doesn't exist or missing required
+            metadata attributes.
+        """
+        files = self._ordered_files(data)
+        previous_data_ids: list[str] = []
+        result: dict = {}
+        for file_index, (data_type, file_path) in enumerate(files):
+            is_last_file = file_index == len(files) - 1
+            result = self._upload_file(
+                file_path=file_path,
+                is_last_file=is_last_file,
+                previous_data_ids=previous_data_ids,
+                sample_fields=self._build_sample_fields(
+                    name, sample_type, metadata, project_id, organism_id,
+                ),
+            )
+            if not is_last_file:
+                previous_data_ids.append(result["data_id"])
+        return Sample(id=result["sample_id"])
 
     def get_types(self) -> list[SampleType]:
         """Return the available sample types.
@@ -164,11 +278,7 @@ class SampleResource:
         return [Organism(**item) for item in self._transport.get("/organisms")]
 
     def get_metadata_attributes(self) -> list[MetadataAttribute]:
-        """Return the available metadata attributes for samples.
-
-        Fetches all attributes and, for those with restricted options,
-        fetches the valid values. Attributes where any user-provided
-        value is accepted will have ``options`` set to ``None``.
+        """Return the available metadata attributes for samples. See :ref:`metadata-attributes` for more detail.
 
         Example::
 
@@ -185,79 +295,6 @@ class SampleResource:
         ]
         item["options"] = self._resolve_options(item)
         return MetadataAttribute(**item)
-
-    def upload_sample(
-        self,
-        name: str,
-        sample_type: str,
-        data: dict[str, Path],
-        metadata: dict[str, str] | None = None,
-        project_id: str | None = None,
-        organism_id: str | None = None,
-    ) -> Sample:
-        """Upload a sample with one or more files.
-
-        Files are uploaded in chunks to support large files without
-        loading them entirely into memory. Multiple files are linked
-        together into a single sample. Chunk size and progress display
-        are controlled via :class:`ClientConfig`.
-
-        Requires authentication.
-
-        :param name: The name of the sample.
-        :param sample_type: The sample type identifier
-            (e.g. ``"RNA-Seq"``).
-        :param data: A mapping of data type identifiers to file paths.
-            For sequencing samples, use ``reads1`` and optionally
-            ``reads2`` — these are the only valid reads keys, and
-            ``reads1`` is always uploaded first::
-
-                # Single-end
-                {"reads1": Path("sample.fastq.gz")}
-
-                # Paired-end
-                {"reads1": Path("R1.fastq.gz"), "reads2": Path("R2.fastq.gz")}
-
-            For non-sequencing sample types, any key names are
-            accepted and files are uploaded in the order given::
-
-                {"input": Path("counts.csv")}
-
-        :param metadata: Optional metadata key-value pairs.
-        :param project_id: Optional project ID to assign the sample to.
-        :param organism_id: Optional organism ID to associate with.
-        :returns: The created sample's ID and data ID.
-        :raises ValueError: If reads keys are invalid (e.g. ``reads3``)
-            or ``reads2`` is provided without ``reads1``.
-
-        Example::
-
-            from pathlib import Path
-
-            result = client.samples.upload_sample(
-                name="My RNA-Seq Sample",
-                sample_type="RNA-Seq",
-                data={"reads1": Path("reads_R1.fastq.gz")},
-                metadata={"strandedness": "forward"},
-            )
-            print(f"Sample ID: {result.sample_id}")
-        """
-        files = self._ordered_files(data)
-        previous_data_ids: list[str] = []
-        result: dict = {}
-        for file_index, (data_type, file_path) in enumerate(files):
-            is_last_file = file_index == len(files) - 1
-            result = self._upload_file(
-                file_path=file_path,
-                is_last_file=is_last_file,
-                previous_data_ids=previous_data_ids,
-                sample_fields=self._build_sample_fields(
-                    name, sample_type, metadata, project_id, organism_id,
-                ),
-            )
-            if not is_last_file:
-                previous_data_ids.append(result["data_id"])
-        return Sample(id=result["sample_id"])
 
     def _upload_file(
         self,

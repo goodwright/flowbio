@@ -1,3 +1,11 @@
+"""
+Exceptions raised by the v2 client.
+
+All exceptions inherit from :class:`FlowApiError`, which carries the
+HTTP status code and error message from the response.
+"""
+
+
 class FlowApiError(Exception):
     """Base exception for all Flow API errors.
 

@@ -4,6 +4,8 @@ import os
 import io
 import math
 import base64
+import warnings
+
 import requests
 from tqdm import tqdm
 from pathlib import Path
@@ -59,6 +61,7 @@ class UploadClient:
                 data_id = resp["data"]["uploadData"]["dataId"]
         return self.data(data_id)
 
+    @warnings.deprecated("Being phased out. Use `flowbio.v2.Client.upload_sample` instead.")
     def upload_sample(
         self,
         name: str,
