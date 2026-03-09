@@ -24,12 +24,16 @@ class HttpTransport:
 
     :param base_url: The base URL of the Flow API
         (e.g. ``"https://app.flow.bio/api"``).
+    :param connection_retries: Number of retries on connection failure.
+        Only retries ``ConnectError``/``ConnectTimeout`` (TCP never
+        established), so it is safe for all HTTP methods. Defaults to ``3``.
     """
 
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, connection_retries: int = 3) -> None:
         self._base_url = base_url.rstrip("/")
         self._client = httpx.Client(
             headers={"User-Agent": f"flowbio-python/{_CLIENT_VERSION}"},
+            transport=httpx.HTTPTransport(retries=connection_retries),
         )
 
     _STATUS_TO_EXCEPTION: dict[int, type[FlowApiError]] = {

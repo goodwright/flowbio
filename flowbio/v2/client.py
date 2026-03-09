@@ -13,6 +13,11 @@ class ClientConfig:
         Defaults to 1 MB.
     :param show_progress: Whether to display progress bars during
         file uploads. Defaults to ``True``.
+    :param connection_retries: Number of times to retry on connection
+        failure (e.g. ``ConnectError``, ``ConnectTimeout``). Only retries
+        when the TCP connection was never established, so it is safe for
+        all HTTP methods including POST. Set to ``0`` to disable.
+        Defaults to ``3``.
 
     Example usage::
 
@@ -26,6 +31,7 @@ class ClientConfig:
 
     chunk_size: int = 1_000_000
     show_progress: bool = True
+    connection_retries: int = 3
 
 
 class Client:
@@ -58,8 +64,11 @@ class Client:
         base_url: str = "https://app.flow.bio/api",
         config: ClientConfig | None = None,
     ) -> None:
-        self._transport = HttpTransport(base_url)
         self._config = config or ClientConfig()
+        self._transport = HttpTransport(
+            base_url,
+            connection_retries=self._config.connection_retries,
+        )
         self._samples = SampleResource(self._transport, self._config)
 
     @property

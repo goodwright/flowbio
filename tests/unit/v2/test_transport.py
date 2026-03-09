@@ -1,4 +1,5 @@
 import json
+from unittest.mock import patch
 
 import httpx
 import respx
@@ -14,6 +15,29 @@ from flowbio.v2.exceptions import (
 )
 
 from tests.unit.v2.conftest import DEFAULT_BASE_URL
+
+
+class TestTransportConnectionRetries:
+
+    @patch("flowbio.v2._transport.httpx.HTTPTransport")
+    def test_default_retries(self, mock_http_transport) -> None:
+        HttpTransport(DEFAULT_BASE_URL)
+
+        mock_http_transport.assert_called_once_with(retries=3)
+
+    @patch("flowbio.v2._transport.httpx.HTTPTransport")
+    def test_custom_retries(self, mock_http_transport) -> None:
+        connection_retries = 5
+
+        HttpTransport(DEFAULT_BASE_URL, connection_retries=connection_retries)
+
+        mock_http_transport.assert_called_once_with(retries=connection_retries)
+
+    @patch("flowbio.v2._transport.httpx.HTTPTransport")
+    def test_retries_disabled(self, mock_http_transport) -> None:
+        HttpTransport(DEFAULT_BASE_URL, connection_retries=0)
+
+        mock_http_transport.assert_called_once_with(retries=0)
 
 
 class TestTransportGet:
