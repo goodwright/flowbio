@@ -1,3 +1,4 @@
+from http import HTTPStatus
 from importlib.metadata import PackageNotFoundError, version
 
 import httpx
@@ -37,9 +38,9 @@ class HttpTransport:
         )
 
     _STATUS_TO_EXCEPTION: dict[int, type[FlowApiError]] = {
-        400: BadRequestError,
-        401: AuthenticationError,
-        404: NotFoundError,
+        HTTPStatus.BAD_REQUEST: BadRequestError,
+        HTTPStatus.UNAUTHORIZED: AuthenticationError,
+        HTTPStatus.NOT_FOUND: NotFoundError,
     }
 
     def _raise_for_error(self, response: httpx.Response) -> None:
@@ -47,7 +48,7 @@ class HttpTransport:
             return
 
         body = response.json()
-        message = body.get("error", "Unknown error")
+        message = body.get("error", body)
         exception_class = self._STATUS_TO_EXCEPTION.get(
             response.status_code, FlowApiError,
         )
