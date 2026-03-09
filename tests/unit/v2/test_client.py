@@ -1,4 +1,5 @@
 import json
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -111,6 +112,12 @@ class TestClientConfig:
 
         assert config.chunk_size == 1_000_000
         assert config.show_progress is True
+        assert config.connection_retries == 3
+
+    def test_custom_connection_retries(self) -> None:
+        config = ClientConfig(connection_retries=0)
+
+        assert config.connection_retries == 0
 
     def test_config_is_immutable(self) -> None:
         config = ClientConfig()
@@ -120,3 +127,14 @@ class TestClientConfig:
 
     def test_client_accepts_custom_config(self) -> None:
         Client(config=ClientConfig(chunk_size=5_000_000))
+
+    @patch("flowbio.v2.client.HttpTransport")
+    def test_client_passes_connection_retries_to_transport(self, mock_transport) -> None:
+        connection_retries = 5
+
+        Client(config=ClientConfig(connection_retries=connection_retries))
+
+        mock_transport.assert_called_once_with(
+            "https://app.flow.bio/api",
+            connection_retries=connection_retries,
+        )

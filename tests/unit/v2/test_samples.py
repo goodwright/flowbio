@@ -425,6 +425,25 @@ class TestUploadSample:
 
         assert route.call_count == 3
 
+    @respx.mock
+    def test_connect_error_on_chunk_propagates(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"A" * 100)
+        route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample")
+        route.side_effect = [
+            httpx.Response(200, json={"sample_id": None, "data_id": "d1"}),
+            httpx.ConnectError("Connection refused"),
+        ]
+
+        client = Client(config=ClientConfig(chunk_size=40, show_progress=False))
+
+        with pytest.raises(httpx.ConnectError):
+            client.samples.upload_sample(
+                name="My Sample",
+                sample_type="rna_seq",
+                data={"reads1": file_path},
+            )
+
     def test_rejects_invalid_reads_key(self, tmp_path: Path) -> None:
         file_path = tmp_path / "reads.fastq"
         file_path.write_bytes(b"ATCG")
