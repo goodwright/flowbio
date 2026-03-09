@@ -1,4 +1,5 @@
 import json
+from http import HTTPStatus
 from unittest.mock import patch
 
 import httpx
@@ -289,6 +290,23 @@ class TestTransportErrorHandling:
 
         assert exc_info.value.status_code == 500
         assert exc_info.value.message == error_message
+
+
+class TestTransportErrorBodyPreservation:
+
+    @respx.mock
+    def test_400_without_error_key_preserves_full_body(self) -> None:
+        body = {"validation": [{"row": 1, "message": "Invalid scientist"}]}
+        respx.post(f"{DEFAULT_BASE_URL}/upload/annotation").mock(
+            return_value=httpx.Response(HTTPStatus.BAD_REQUEST, json=body),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(BadRequestError) as exc_info:
+            transport.post("/upload/annotation", data={})
+
+        assert exc_info.value.message == body
 
 
 class TestTransportGetBytes:

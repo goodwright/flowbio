@@ -5,6 +5,8 @@ All exceptions inherit from :class:`FlowApiError`, which carries the
 HTTP status code and error message from the response.
 """
 
+from http import HTTPStatus
+
 
 class FlowApiError(Exception):
     """Base exception for all Flow API errors.
@@ -46,7 +48,10 @@ class AnnotationValidationError(BadRequestError):
 
     def __init__(self, errors: list[dict]) -> None:
         self.errors = errors
-        super().__init__(400, f"Annotation has {len(errors)} validation error(s)")
+        super().__init__(
+            HTTPStatus.BAD_REQUEST,
+            f"Annotation has {len(errors)} validation error(s)",
+        )
 
 
 class NotFoundError(FlowApiError):
