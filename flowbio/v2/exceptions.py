@@ -35,6 +35,20 @@ class BadRequestError(FlowApiError):
     pass
 
 
+class AnnotationValidationError(BadRequestError):
+    """Raised when the annotation upload returns hard validation errors.
+
+    The annotation endpoint returns ``{"validation": [...]}`` with status 400
+    for errors that cannot be ignored (as opposed to warnings which can).
+
+    :param errors: List of validation error dicts from the response.
+    """
+
+    def __init__(self, errors: list[dict]) -> None:
+        self.errors = errors
+        super().__init__(400, f"Annotation has {len(errors)} validation error(s)")
+
+
 class NotFoundError(FlowApiError):
     """Raised when the API returns a 404 Not Found response."""
 

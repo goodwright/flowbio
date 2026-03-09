@@ -1,4 +1,5 @@
 from flowbio.v2.exceptions import (
+    AnnotationValidationError,
     AuthenticationError,
     BadRequestError,
     FlowApiError,
@@ -71,6 +72,34 @@ class TestBadRequestError:
 
         assert error.status_code == status_code
         assert error.message == message
+
+
+class TestAnnotationValidationError:
+
+    def test_is_bad_request_error(self) -> None:
+        error = AnnotationValidationError(
+            errors=[{"row": 1, "message": "Invalid scientist"}],
+        )
+
+        assert isinstance(error, BadRequestError)
+
+    def test_stores_validation_errors(self) -> None:
+        validation_errors = [
+            {"row": 1, "message": "Invalid scientist"},
+            {"row": 2, "message": "Missing barcode"},
+        ]
+
+        error = AnnotationValidationError(errors=validation_errors)
+
+        assert error.errors == validation_errors
+
+    def test_str_includes_error_count(self) -> None:
+        error = AnnotationValidationError(
+            errors=[{"row": 1, "message": "Invalid scientist"}],
+        )
+
+        assert "1" in str(error)
+        assert "validation" in str(error).lower()
 
 
 class TestNotFoundError:
