@@ -42,9 +42,9 @@ class HttpTransport:
         404: NotFoundError,
     }
 
-    def _handle_response(self, response: httpx.Response) -> dict:
+    def _raise_for_error(self, response: httpx.Response) -> None:
         if response.is_success:
-            return response.json()
+            return
 
         body = response.json()
         message = body.get("error", "Unknown error")
@@ -52,6 +52,10 @@ class HttpTransport:
             response.status_code, FlowApiError,
         )
         raise exception_class(response.status_code, message)
+
+    def _handle_response(self, response: httpx.Response) -> dict:
+        self._raise_for_error(response)
+        return response.json()
 
     def _url(self, path: str) -> str:
         clean_path = path.lstrip("/")
@@ -67,6 +71,21 @@ class HttpTransport:
         """
         response = self._client.get(self._url(path), params=params)
         return self._handle_response(response)
+
+    def get_bytes(self, path: str, params: dict | None = None) -> bytes:
+        """Send a GET request and return the raw response bytes.
+
+        Use this for endpoints that return binary content (e.g. file
+        downloads) instead of JSON.
+
+        :param path: The API path to request.
+        :param params: Optional query parameters to include in the request.
+        :returns: The raw response bytes.
+        :raises FlowApiError: If the API returns a non-success status code.
+        """
+        response = self._client.get(self._url(path), params=params)
+        self._raise_for_error(response)
+        return response.content
 
     def post(
         self,

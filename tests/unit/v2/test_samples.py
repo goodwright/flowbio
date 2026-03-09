@@ -6,6 +6,7 @@ import pytest
 import respx
 
 from flowbio.v2.client import Client, ClientConfig
+from flowbio.v2.exceptions import NotFoundError
 from flowbio.v2.samples import (
     MetadataAttribute,
     Organism,
@@ -510,3 +511,45 @@ class TestUploadSample:
         )
 
         assert result == Sample(id="s1")
+
+
+class TestGetAnnotationTemplate:
+
+    @respx.mock
+    def test_returns_bytes_for_generic_template(self) -> None:
+        template_content = b"\x50\x4b\x03\x04xlsx-content"
+        respx.get(f"{DEFAULT_BASE_URL}/annotation/generic").mock(
+            return_value=httpx.Response(200, content=template_content),
+        )
+
+        client = Client()
+        result = client.samples.get_annotation_template()
+
+        assert result == template_content
+
+    @respx.mock
+    def test_returns_bytes_for_specific_sample_type(self) -> None:
+        sample_type = "rna_seq"
+        template_content = b"\x50\x4b\x03\x04rna-seq-template"
+        respx.get(f"{DEFAULT_BASE_URL}/annotation/{sample_type}").mock(
+            return_value=httpx.Response(200, content=template_content),
+        )
+
+        client = Client()
+        result = client.samples.get_annotation_template(sample_type=sample_type)
+
+        assert result == template_content
+
+    @respx.mock
+    def test_raises_not_found_error_for_nonexistent_type(self) -> None:
+        error_message = "Sample type not found"
+        respx.get(f"{DEFAULT_BASE_URL}/annotation/nonexistent").mock(
+            return_value=httpx.Response(404, json={"error": error_message}),
+        )
+
+        client = Client()
+
+        with pytest.raises(NotFoundError) as exc_info:
+            client.samples.get_annotation_template(sample_type="nonexistent")
+
+        assert exc_info.value.message == error_message

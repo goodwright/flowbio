@@ -291,6 +291,62 @@ class TestTransportErrorHandling:
         assert exc_info.value.message == error_message
 
 
+class TestTransportGetBytes:
+
+    @respx.mock
+    def test_returns_raw_response_bytes(self) -> None:
+        content = b"\x50\x4b\x03\x04xlsx-content-here"
+        respx.get(f"{DEFAULT_BASE_URL}/annotation/generic").mock(
+            return_value=httpx.Response(200, content=content),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        result = transport.get_bytes("/annotation/generic")
+
+        assert result == content
+
+    @respx.mock
+    def test_passes_query_parameters(self) -> None:
+        route = respx.get(f"{DEFAULT_BASE_URL}/annotation/generic").mock(
+            return_value=httpx.Response(200, content=b"data"),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        transport.get_bytes("/annotation/generic", params={"format": "xlsx"})
+
+        assert route.calls[0].request.url.params["format"] == "xlsx"
+
+    @respx.mock
+    def test_raises_not_found_error_on_404(self) -> None:
+        error_message = "Sample type not found"
+        respx.get(f"{DEFAULT_BASE_URL}/annotation/nonexistent").mock(
+            return_value=httpx.Response(404, json={"error": error_message}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(NotFoundError) as exc_info:
+            transport.get_bytes("/annotation/nonexistent")
+
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.message == error_message
+
+    @respx.mock
+    def test_raises_authentication_error_on_401(self) -> None:
+        error_message = "Not authenticated"
+        respx.get(f"{DEFAULT_BASE_URL}/annotation/generic").mock(
+            return_value=httpx.Response(401, json={"error": error_message}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(AuthenticationError) as exc_info:
+            transport.get_bytes("/annotation/generic")
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.message == error_message
+
+
 class TestTransportTokenManagement:
 
     @respx.mock

@@ -226,6 +226,35 @@ class SampleResource:
                 previous_data_ids.append(result["data_id"])
         return Sample(id=result["sample_id"])
 
+    def get_annotation_template(self, sample_type: str = "generic") -> bytes:
+        """Download an annotation sheet template for multiplexed uploads.
+
+        Annotation sheets are spreadsheets that describe multiple samples
+        in a single file. Download a template, fill in one row per sample
+        with names, file paths, and metadata, then submit the completed
+        sheet to upload all samples in one batch.
+
+        A type-specific template (e.g. ``"rna_seq"``) includes columns
+        for metadata attributes relevant to that sample type. The
+        ``"generic"`` template includes only the base columns shared by
+        all types.
+
+        Returns the raw xlsx bytes. Write them to disk to get a usable
+        spreadsheet::
+
+            from pathlib import Path
+
+            template = client.samples.get_annotation_template("rna_seq")
+            Path("template.xlsx").write_bytes(template)
+
+        :param sample_type: The sample type identifier (e.g. ``"rna_seq"``).
+            Defaults to ``"generic"`` for a universal template. See
+            :meth:`get_types` for available sample types.
+        :returns: The raw xlsx file bytes.
+        :raises NotFoundError: If the sample type does not exist.
+        """
+        return self._transport.get_bytes(f"/annotation/{sample_type}")
+
     def get_types(self) -> list[SampleType]:
         """Return the available sample types.
 
