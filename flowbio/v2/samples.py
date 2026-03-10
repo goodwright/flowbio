@@ -35,6 +35,7 @@ from pydantic import BaseModel
 from tqdm import tqdm
 
 from flowbio.v2._pagination import PageIterator
+from flowbio.v2.exceptions import AnnotationValidationError, BadRequestError
 
 if TYPE_CHECKING:
     from flowbio.v2.client import ClientConfig
@@ -138,6 +139,20 @@ class Sample(BaseModel, frozen=True):
     id: str
 
 
+class MultiplexedUpload(BaseModel, frozen=True):
+    """Result of a multiplexed data upload.
+
+    :param data_ids: IDs for the uploaded multiplexed reads data.
+    :param annotation_id: ID for the uploaded annotation data.
+    :param warnings: Annotation warnings returned by the server.
+        Empty if the annotation was accepted without warnings.
+    """
+
+    data_ids: list[str]
+    annotation_id: str
+    warnings: list[dict]
+
+
 class SampleResource:
     """Provides access to sample-related API endpoints.
 
@@ -229,6 +244,82 @@ class SampleResource:
             if not is_last_file:
                 previous_data_ids.append(result["data_id"])
         return Sample(id=result["sample_id"])
+
+    def upload_multiplexed_data(
+        self,
+        reads: dict[str, Path],
+        annotation: Path,
+        ignore_warnings: bool = True,
+    ) -> MultiplexedUpload:
+        """Upload multiplexed reads and an annotation sheet.
+
+        Validates and uploads the annotation sheet first, so that reads
+        files are not uploaded if the annotation is invalid. Then uploads
+        one or two reads files to ``/upload/multiplexed``.
+
+        By default, annotation warnings are automatically accepted (the
+        upload is retried with ``ignore_warnings=True``) and included in
+        the result for inspection. Set ``ignore_warnings=False`` to
+        reject the upload on warnings instead.
+
+        Requires authentication.
+
+        Example::
+
+            from pathlib import Path
+
+            result = client.samples.upload_multiplexed_data(
+                reads={"reads1": Path("multiplexed_R1.fastq.gz")},
+                annotation=Path("annotation.xlsx"),
+            )
+            print(f"Data IDs: {result.data_ids}")
+            print(f"Annotation ID: {result.annotation_id}")
+            if result.warnings:
+                print(f"Warnings: {result.warnings}")
+
+        :param reads: A mapping of reads keys to file paths. Use
+            ``reads1`` for single-end, or ``reads1`` and ``reads2`` for
+            paired-end. ``reads1`` is always uploaded first::
+
+                # Single-end
+                {"reads1": Path("multiplexed.fastq.gz")}
+
+                # Paired-end
+                {"reads1": Path("R1.fastq.gz"), "reads2": Path("R2.fastq.gz")}
+
+        :param annotation: Path to the annotation sheet (``.xlsx`` or
+            ``.csv``). Use :meth:`get_annotation_template` to download a
+            template.
+        :param ignore_warnings: If ``True`` (the default), annotation
+            warnings are automatically accepted and included in the
+            result. If ``False``, warnings cause a
+            :class:`BadRequestError` to be raised.
+        :raises ValueError: If reads keys are invalid (e.g. ``reads3``)
+            or ``reads2`` is provided without ``reads1``.
+        :raises AnnotationValidationError: If the annotation has hard
+            validation errors that cannot be ignored.
+        :raises BadRequestError: If ``ignore_warnings=False`` and the
+            annotation has warnings.
+        """
+        files = self._ordered_files(reads)
+
+        annotation_id, warnings = self._upload_annotation(
+            annotation, ignore_warnings,
+        )
+
+        data_ids: list[str] = []
+        for _, file_path in files:
+            extra_fields = {"reads1": data_ids[0]} if data_ids else {}
+            result = self._upload_in_chunks(
+                "/upload/multiplexed", file_path, extra_fields,
+            )
+            data_ids.append(result["id"])
+
+        return MultiplexedUpload(
+            data_ids=data_ids,
+            annotation_id=annotation_id,
+            warnings=warnings,
+        )
 
     def get_annotation_template(self, sample_type: str = "generic") -> bytes:
         """Download an annotation sheet template for multiplexed uploads.
@@ -366,6 +457,29 @@ class SampleResource:
             )
             data_id = result.get("data_id") or result.get("id")
         return result
+
+    def _upload_annotation(
+        self, file_path: Path, ignore_warnings: bool,
+    ) -> tuple[str, list[dict]]:
+        try:
+            result = self._upload_in_chunks("/upload/annotation", file_path)
+            return result["id"], []
+        except BadRequestError as e:
+            if isinstance(e.message, dict) and "validation" in e.message:
+                raise AnnotationValidationError(errors=e.message["validation"]) from e
+            if isinstance(e.message, dict) and "warnings" in e.message:
+                if not ignore_warnings:
+                    raise AnnotationValidationError(
+                        errors=e.message["warnings"],
+                    ) from e
+                warnings = e.message["warnings"]
+                result = self._upload_in_chunks(
+                    "/upload/annotation",
+                    file_path,
+                    extra_fields={"ignore_warnings": True},
+                )
+                return result["id"], warnings
+            raise
 
     _VALID_READS_KEYS = {"reads1", "reads2"}
 

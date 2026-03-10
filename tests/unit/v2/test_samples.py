@@ -6,9 +6,10 @@ import pytest
 import respx
 
 from flowbio.v2.client import Client, ClientConfig
-from flowbio.v2.exceptions import NotFoundError
+from flowbio.v2.exceptions import AnnotationValidationError, NotFoundError
 from flowbio.v2.samples import (
     MetadataAttribute,
+    MultiplexedUpload,
     Organism,
     Project,
     SampleResource,
@@ -553,3 +554,279 @@ class TestGetAnnotationTemplate:
             client.samples.get_annotation_template(sample_type="nonexistent")
 
         assert exc_info.value.message == error_message
+
+
+class TestUploadMultiplexedData:
+
+    @respx.mock
+    def test_single_end_with_annotation(self, tmp_path: Path) -> None:
+        reads_file = tmp_path / "reads.fastq"
+        reads_file.write_bytes(b"ATCGATCG")
+        annotation_file = tmp_path / "annotation.xlsx"
+        annotation_file.write_bytes(b"annotation-content")
+        multiplexed_data_id = "mux_data_1"
+        annotation_id = "ann_1"
+        respx.post(f"{DEFAULT_BASE_URL}/upload/multiplexed").mock(
+            return_value=httpx.Response(200, json={"id": multiplexed_data_id}),
+        )
+        respx.post(f"{DEFAULT_BASE_URL}/upload/annotation").mock(
+            return_value=httpx.Response(200, json={"id": annotation_id}),
+        )
+
+        client = Client()
+        result = client.samples.upload_multiplexed_data(
+            reads={"reads1": reads_file},
+            annotation=annotation_file,
+        )
+
+        assert result == MultiplexedUpload(
+            data_ids=[multiplexed_data_id],
+            annotation_id=annotation_id,
+            warnings=[],
+        )
+
+    @respx.mock
+    def test_uploads_annotation_before_reads(self, tmp_path: Path) -> None:
+        reads_file = tmp_path / "reads.fastq"
+        reads_file.write_bytes(b"ATCG")
+        annotation_file = tmp_path / "annotation.xlsx"
+        annotation_file.write_bytes(b"annotation")
+        call_order: list[str] = []
+        ann_route = respx.post(f"{DEFAULT_BASE_URL}/upload/annotation")
+        ann_route.mock(
+            return_value=httpx.Response(200, json={"id": "ann_1"}),
+        )
+        ann_route.mock(side_effect=lambda req: (
+            call_order.append("annotation"),
+            httpx.Response(200, json={"id": "ann_1"}),
+        )[1])
+        mux_route = respx.post(f"{DEFAULT_BASE_URL}/upload/multiplexed")
+        mux_route.mock(side_effect=lambda req: (
+            call_order.append("multiplexed"),
+            httpx.Response(200, json={"id": "mux_1"}),
+        )[1])
+
+        client = Client()
+        client.samples.upload_multiplexed_data(
+            reads={"reads1": reads_file},
+            annotation=annotation_file,
+        )
+
+        assert call_order == ["annotation", "multiplexed"]
+
+    @respx.mock
+    def test_paired_end_sends_reads1_on_second_request(self, tmp_path: Path) -> None:
+        file1 = tmp_path / "R1.fastq"
+        file2 = tmp_path / "R2.fastq"
+        file1.write_bytes(b"READ1")
+        file2.write_bytes(b"READ2")
+        annotation_file = tmp_path / "annotation.xlsx"
+        annotation_file.write_bytes(b"annotation")
+        first_data_id = "mux_1"
+        mux_route = respx.post(f"{DEFAULT_BASE_URL}/upload/multiplexed")
+        mux_route.side_effect = [
+            httpx.Response(200, json={"id": first_data_id}),
+            httpx.Response(200, json={"id": "mux_2"}),
+        ]
+        respx.post(f"{DEFAULT_BASE_URL}/upload/annotation").mock(
+            return_value=httpx.Response(200, json={"id": "ann_1"}),
+        )
+
+        client = Client()
+        client.samples.upload_multiplexed_data(
+            reads={"reads1": file1, "reads2": file2},
+            annotation=annotation_file,
+        )
+
+        first_request = mux_route.calls[0].request
+        second_request = mux_route.calls[1].request
+        assert b"reads1" not in first_request.content
+        assert first_data_id.encode() in second_request.content
+
+    @respx.mock
+    def test_paired_end_with_annotation(self, tmp_path: Path) -> None:
+        file1 = tmp_path / "R1.fastq"
+        file2 = tmp_path / "R2.fastq"
+        file1.write_bytes(b"READ1")
+        file2.write_bytes(b"READ2")
+        annotation_file = tmp_path / "annotation.xlsx"
+        annotation_file.write_bytes(b"annotation")
+        mux_route = respx.post(f"{DEFAULT_BASE_URL}/upload/multiplexed")
+        mux_route.side_effect = [
+            httpx.Response(200, json={"id": "mux_1"}),
+            httpx.Response(200, json={"id": "mux_2"}),
+        ]
+        respx.post(f"{DEFAULT_BASE_URL}/upload/annotation").mock(
+            return_value=httpx.Response(200, json={"id": "ann_1"}),
+        )
+
+        client = Client()
+        result = client.samples.upload_multiplexed_data(
+            reads={"reads1": file1, "reads2": file2},
+            annotation=annotation_file,
+        )
+
+        assert result == MultiplexedUpload(
+            data_ids=["mux_1", "mux_2"],
+            annotation_id="ann_1",
+            warnings=[],
+        )
+        assert mux_route.call_count == 2
+
+    @respx.mock
+    def test_validation_errors_raise_without_uploading_reads(
+        self, tmp_path: Path,
+    ) -> None:
+        reads_file = tmp_path / "reads.fastq"
+        reads_file.write_bytes(b"ATCG")
+        annotation_file = tmp_path / "annotation.xlsx"
+        annotation_file.write_bytes(b"annotation")
+        validation_errors = [{"row": 1, "message": "Invalid scientist"}]
+        mux_route = respx.post(f"{DEFAULT_BASE_URL}/upload/multiplexed").mock(
+            return_value=httpx.Response(200, json={"id": "mux_1"}),
+        )
+        respx.post(f"{DEFAULT_BASE_URL}/upload/annotation").mock(
+            return_value=httpx.Response(
+                400, json={"validation": validation_errors},
+            ),
+        )
+
+        client = Client()
+
+        with pytest.raises(AnnotationValidationError) as exc_info:
+            client.samples.upload_multiplexed_data(
+                reads={"reads1": reads_file},
+                annotation=annotation_file,
+            )
+
+        assert exc_info.value.errors == validation_errors
+        assert mux_route.call_count == 0
+
+    @respx.mock
+    def test_annotation_warnings_auto_retries_and_returns_warnings(
+        self, tmp_path: Path,
+    ) -> None:
+        reads_file = tmp_path / "reads.fastq"
+        reads_file.write_bytes(b"ATCG")
+        annotation_file = tmp_path / "annotation.xlsx"
+        annotation_file.write_bytes(b"annotation")
+        warnings = [{"row": 1, "message": "Unknown barcode"}]
+        ann_route = respx.post(f"{DEFAULT_BASE_URL}/upload/annotation")
+        ann_route.side_effect = [
+            httpx.Response(400, json={"warnings": warnings}),
+            httpx.Response(200, json={"id": "ann_1"}),
+        ]
+        respx.post(f"{DEFAULT_BASE_URL}/upload/multiplexed").mock(
+            return_value=httpx.Response(200, json={"id": "mux_1"}),
+        )
+
+        client = Client()
+        result = client.samples.upload_multiplexed_data(
+            reads={"reads1": reads_file},
+            annotation=annotation_file,
+        )
+
+        assert result.warnings == warnings
+        assert result.annotation_id == "ann_1"
+        retry_request = ann_route.calls[1].request
+        assert b"ignore_warnings" in retry_request.content
+
+    @respx.mock
+    def test_ignore_warnings_false_raises_annotation_validation_error(
+        self, tmp_path: Path,
+    ) -> None:
+        reads_file = tmp_path / "reads.fastq"
+        reads_file.write_bytes(b"ATCG")
+        annotation_file = tmp_path / "annotation.xlsx"
+        annotation_file.write_bytes(b"annotation")
+        warnings = [{"row": 1, "message": "Unknown barcode"}]
+        respx.post(f"{DEFAULT_BASE_URL}/upload/annotation").mock(
+            return_value=httpx.Response(400, json={"warnings": warnings}),
+        )
+
+        client = Client()
+
+        with pytest.raises(AnnotationValidationError) as exc_info:
+            client.samples.upload_multiplexed_data(
+                reads={"reads1": reads_file},
+                annotation=annotation_file,
+                ignore_warnings=False,
+            )
+
+        assert exc_info.value.errors == warnings
+
+    @respx.mock
+    def test_annotation_without_warnings_returns_empty_warnings(
+        self, tmp_path: Path,
+    ) -> None:
+        reads_file = tmp_path / "reads.fastq"
+        reads_file.write_bytes(b"ATCG")
+        annotation_file = tmp_path / "annotation.xlsx"
+        annotation_file.write_bytes(b"annotation")
+        respx.post(f"{DEFAULT_BASE_URL}/upload/multiplexed").mock(
+            return_value=httpx.Response(200, json={"id": "mux_1"}),
+        )
+        respx.post(f"{DEFAULT_BASE_URL}/upload/annotation").mock(
+            return_value=httpx.Response(200, json={"id": "ann_1"}),
+        )
+
+        client = Client()
+        result = client.samples.upload_multiplexed_data(
+            reads={"reads1": reads_file},
+            annotation=annotation_file,
+        )
+
+        assert result.warnings == []
+
+    def test_rejects_invalid_reads_keys(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"ATCG")
+        annotation_file = tmp_path / "annotation.xlsx"
+        annotation_file.write_bytes(b"annotation")
+
+        client = Client()
+
+        with pytest.raises(ValueError, match="reads3"):
+            client.samples.upload_multiplexed_data(
+                reads={"reads1": file_path, "reads3": file_path},
+                annotation=annotation_file,
+            )
+
+    def test_rejects_reads2_without_reads1(self, tmp_path: Path) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"ATCG")
+        annotation_file = tmp_path / "annotation.xlsx"
+        annotation_file.write_bytes(b"annotation")
+
+        client = Client()
+
+        with pytest.raises(ValueError, match="reads1"):
+            client.samples.upload_multiplexed_data(
+                reads={"reads2": file_path},
+                annotation=annotation_file,
+            )
+
+    @respx.mock
+    def test_chunked_multiplexed_upload(self, tmp_path: Path) -> None:
+        reads_file = tmp_path / "reads.fastq"
+        reads_file.write_bytes(b"A" * 100)
+        annotation_file = tmp_path / "annotation.xlsx"
+        annotation_file.write_bytes(b"annotation")
+        mux_route = respx.post(f"{DEFAULT_BASE_URL}/upload/multiplexed")
+        mux_route.side_effect = [
+            httpx.Response(200, json={"id": "mux_1"}),
+            httpx.Response(200, json={"id": "mux_1"}),
+            httpx.Response(200, json={"id": "mux_1"}),
+        ]
+        respx.post(f"{DEFAULT_BASE_URL}/upload/annotation").mock(
+            return_value=httpx.Response(200, json={"id": "ann_1"}),
+        )
+
+        client = Client(config=ClientConfig(chunk_size=40, show_progress=False))
+        result = client.samples.upload_multiplexed_data(
+            reads={"reads1": reads_file},
+            annotation=annotation_file,
+        )
+
+        assert mux_route.call_count == 3
+        assert result.data_ids == ["mux_1"]
