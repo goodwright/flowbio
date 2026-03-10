@@ -298,8 +298,8 @@ class SampleResource:
             or ``reads2`` is provided without ``reads1``.
         :raises AnnotationValidationError: If the annotation has hard
             validation errors that cannot be ignored.
-        :raises BadRequestError: If ``ignore_warnings=False`` and the
-            annotation has warnings.
+        :raises AnnotationValidationError: If ``ignore_warnings=False``
+            and the annotation has warnings.
         """
         files = self._ordered_files(reads)
 
@@ -438,24 +438,24 @@ class SampleResource:
                 desc=f"Uploading {file_path.name}",
                 unit="chunk",
             )
-        for chunk_index in chunks:
-            is_last_chunk = chunk_index == num_chunks - 1
-            form_data: dict[str, str] = {
-                "filename": file_path.name,
-                "expected_file_size": str(chunk_index * chunk_size),
-                "is_last": is_last_chunk,
-                "data": data_id,
-                **(extra_fields or {}),
-            }
-            with open(file_path, "rb") as f:
-                f.seek(chunk_index * chunk_size)
+        with open(file_path, "rb") as f:
+            for chunk_index in chunks:
+                is_last_chunk = chunk_index == num_chunks - 1
+                form_data: dict[str, str | bool | list[str] | None] = {
+                    "filename": file_path.name,
+                    # API uses this as a byte offset to verify upload resumption
+                    "expected_file_size": str(chunk_index * chunk_size),
+                    "is_last": is_last_chunk,
+                    "data": data_id,
+                    **(extra_fields or {}),
+                }
                 chunk = f.read(chunk_size)
-            result = self._transport.post(
-                endpoint,
-                data=form_data,
-                files={"blob": (file_path.name, chunk, "application/octet-stream")},
-            )
-            data_id = result.get("data_id") or result.get("id")
+                result = self._transport.post(
+                    endpoint,
+                    data=form_data,
+                    files={"blob": (file_path.name, chunk, "application/octet-stream")},
+                )
+                data_id = result.get("data_id") or result.get("id")
         return result
 
     def _upload_annotation(
