@@ -214,13 +214,17 @@ class SampleResource:
         result: dict = {}
         for file_index, (data_type, file_path) in enumerate(files):
             is_last_file = file_index == len(files) - 1
-            result = self._upload_file(
-                file_path=file_path,
-                is_last_file=is_last_file,
-                previous_data_ids=previous_data_ids,
-                sample_fields=self._build_sample_fields(
-                    name, sample_type, metadata, project_id, organism_id,
-                ),
+            fields = self._build_sample_fields(
+                name, sample_type, metadata, project_id, organism_id,
+            )
+            result = self._upload_in_chunks(
+                "/upload/sample",
+                file_path,
+                extra_fields={
+                    "is_last_sample": is_last_file,
+                    "previous_data": previous_data_ids,
+                    **(fields or {}),
+                },
             )
             if not is_last_file:
                 previous_data_ids.append(result["data_id"])
@@ -325,12 +329,11 @@ class SampleResource:
         item["options"] = self._resolve_options(item)
         return MetadataAttribute(**item)
 
-    def _upload_file(
+    def _upload_in_chunks(
         self,
+        endpoint: str,
         file_path: Path,
-        is_last_file: bool,
-        previous_data_ids: list[str],
-        sample_fields: dict[str, str],
+        extra_fields: dict | None = None,
     ) -> dict:
         chunk_size = self._config.chunk_size
         file_size = file_path.stat().st_size
@@ -346,25 +349,22 @@ class SampleResource:
             )
         for chunk_index in chunks:
             is_last_chunk = chunk_index == num_chunks - 1
-            is_last_sample = is_last_file and is_last_chunk
-            with open(file_path, "rb") as f:
-                f.seek(chunk_index * chunk_size)
-                chunk = f.read(chunk_size)
             form_data: dict[str, str] = {
                 "filename": file_path.name,
                 "expected_file_size": str(chunk_index * chunk_size),
                 "is_last": is_last_chunk,
                 "data": data_id,
-                "is_last_sample": is_last_sample,
-                "previous_data": previous_data_ids,
-                **(sample_fields or {}),
+                **(extra_fields or {}),
             }
+            with open(file_path, "rb") as f:
+                f.seek(chunk_index * chunk_size)
+                chunk = f.read(chunk_size)
             result = self._transport.post(
-                "/upload/sample",
+                endpoint,
                 data=form_data,
                 files={"blob": (file_path.name, chunk, "application/octet-stream")},
             )
-            data_id = result["data_id"]
+            data_id = result.get("data_id") or result.get("id")
         return result
 
     _VALID_READS_KEYS = {"reads1", "reads2"}
