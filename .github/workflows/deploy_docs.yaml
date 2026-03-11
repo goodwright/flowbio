@@ -37,7 +37,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install .
-          pip install sphinx==9.1.0 sphinx-autodoc-typehints==3.6.3 furo==2025.12.19
+          pip install sphinx==9.1.0 sphinx-autodoc-typehints==3.6.3 furo==2025.12.19 autodoc_pydantic==2.2.0
       - name: Sphinx build
         run: |
           make html
