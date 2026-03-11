@@ -175,20 +175,14 @@ API Reference
 Models
 ------
 
-.. autoclass:: flowbio.v2.samples.Sample
-   :no-members:
+.. autopydantic_model:: flowbio.v2.samples.Sample
 
-.. autoclass:: flowbio.v2.samples.SampleType
-   :no-members:
+.. autopydantic_model:: flowbio.v2.samples.SampleType
 
-.. autoclass:: flowbio.v2.samples.MetadataAttribute
-   :no-members:
+.. autopydantic_model:: flowbio.v2.samples.MetadataAttribute
 
-.. autoclass:: flowbio.v2.samples.Project
-   :no-members:
+.. autopydantic_model:: flowbio.v2.samples.Project
 
-.. autoclass:: flowbio.v2.samples.Organism
-   :no-members:
+.. autopydantic_model:: flowbio.v2.samples.Organism
 
-.. autoclass:: flowbio.v2.samples.MultiplexedUpload
-   :no-members:
+.. autopydantic_model:: flowbio.v2.samples.MultiplexedUpload

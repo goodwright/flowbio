@@ -31,7 +31,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from tqdm import tqdm
 
 from flowbio.v2._pagination import PageIterator
@@ -45,10 +45,6 @@ if TYPE_CHECKING:
 class SampleType(BaseModel, frozen=True):
     """A type of sample that can be uploaded to the Flow platform.
 
-    :param identifier: Unique identifier for this sample type.
-    :param name: Human-readable display name.
-    :param description: Explanation of what this sample type represents.
-
     Example::
 
         sample_types = client.samples.get_types()
@@ -56,23 +52,14 @@ class SampleType(BaseModel, frozen=True):
             print(f"{st.identifier}: {st.name}")
     """
 
-    identifier: str
-    name: str
-    description: str
+    identifier: str = Field(description="Unique identifier for this sample type.")
+    name: str = Field(description="Human-readable display name.")
+    description: str = Field(description="Explanation of what this sample type represents.")
 
 
 class MetadataAttribute(BaseModel, frozen=True):
     """A metadata attribute that can be attached to a sample. See :ref:`metadata-attributes` for a more detailed
     explanation.
-
-    :param identifier: Unique identifier for this attribute.
-    :param name: Human-readable display name.
-    :param description: Explanation of what this attribute represents.
-    :param required: Whether this attribute is required at sample creation.
-    :param required_for_sample_types: Sample type identifiers for which
-        this attribute is required at creation.
-    :param options: The list of valid values, or ``None`` if any value
-        is accepted.
 
     Example::
 
@@ -82,20 +69,20 @@ class MetadataAttribute(BaseModel, frozen=True):
                 print(f"{attr.name}: choose from {attr.options}")
     """
 
-    identifier: str
-    name: str
-    description: str
-    required: bool
-    required_for_sample_types: list[str]
-    options: list[str] | None
+    identifier: str = Field(description="Unique identifier for this attribute.")
+    name: str = Field(description="Human-readable display name.")
+    description: str = Field(description="Explanation of what this attribute represents.")
+    required: bool = Field(description="Whether this attribute is required at sample creation.")
+    required_for_sample_types: list[str] = Field(
+        description="Sample type identifiers for which this attribute is required at creation.",
+    )
+    options: list[str] | None = Field(
+        description="The list of valid values, or ``None`` if any value is accepted.",
+    )
 
 
 class Project(BaseModel, frozen=True):
     """A project that samples can be assigned to.
-
-    :param id: Unique identifier for this project.
-    :param name: Human-readable display name.
-    :param description: Explanation of what this project is for.
 
     Example::
 
@@ -104,17 +91,13 @@ class Project(BaseModel, frozen=True):
             print(f"{p.id}: {p.name}")
     """
 
-    id: str
-    name: str
-    description: str
+    id: str = Field(description="Unique identifier for this project.")
+    name: str = Field(description="Human-readable display name.")
+    description: str = Field(description="Explanation of what this project is for.")
 
 
 class Organism(BaseModel, frozen=True):
     """An organism that a sample can be associated with.
-
-    :param id: Unique identifier for this organism.
-    :param name: Common name.
-    :param latin_name: Scientific (Latin) name.
 
     Example::
 
@@ -123,34 +106,27 @@ class Organism(BaseModel, frozen=True):
             print(f"{o.id}: {o.name} ({o.latin_name})")
     """
 
-    id: str
-    name: str
-    latin_name: str
+    id: str = Field(description="Unique identifier for this organism.")
+    name: str = Field(description="Common name.")
+    latin_name: str = Field(description="Scientific (Latin) name.")
 
 
 class Sample(BaseModel, frozen=True):
     """A sample on the Flow platform. For now this only includes id, but when we
     add more methods to retrieve samples with more detail, more fields will be added.
-
-
-    :param id: The unique identifier of the sample.
     """
 
-    id: str
+    id: str = Field(description="The unique identifier of the sample.")
 
 
 class MultiplexedUpload(BaseModel, frozen=True):
-    """Result of a multiplexed data upload.
+    """Result of a multiplexed data upload."""
 
-    :param data_ids: IDs for the uploaded multiplexed reads data.
-    :param annotation_id: ID for the uploaded annotation data.
-    :param warnings: Annotation warnings returned by the server.
-        Empty if the annotation was accepted without warnings.
-    """
-
-    data_ids: list[str]
-    annotation_id: str
-    warnings: list[dict]
+    data_ids: list[str] = Field(description="IDs for the uploaded multiplexed reads data.")
+    annotation_id: str = Field(description="ID for the uploaded annotation data.")
+    warnings: list[dict] = Field(
+        description="Annotation warnings returned by the server. Empty if the annotation was accepted without warnings.",
+    )
 
 
 class SampleResource:
