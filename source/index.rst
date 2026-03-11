@@ -17,9 +17,22 @@ are installed automatically.
 Overview
 --------
 
-The :class:`~flowbio.v2.Client` is the recommended client and is under active
-development. The :class:`legacy client <flowbio.Client>` is being phased out
-but remains available for functionality not yet covered by v2.
+Everything starts with creating a :class:`~flowbio.v2.Client`. This is your
+connection to Flow — once you log in, you use it to upload samples, browse
+metadata, manage projects, and anything else the library supports::
+
+    from flowbio.v2 import Client
+    from flowbio.v2.auth import UsernamePasswordCredentials
+
+    client = Client()
+    client.log_in(UsernamePasswordCredentials("you@example.com", "password"))
+
+    # Now use client.samples.upload_sample(...), client.samples.upload_multiplexed_data(...), etc.
+
+The :class:`~flowbio.v2.Client` is the recommended starting point and is
+under active development. The :class:`legacy client <flowbio.Client>` is
+being phased out but remains available for functionality not yet covered
+by v2.
 
 .. toctree::
    :maxdepth: 2
