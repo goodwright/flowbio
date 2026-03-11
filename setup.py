@@ -5,13 +5,13 @@ with open("README.md") as f:
 
 setup(
     name="flowbio",
-    version="0.5.0",
+    version="0.5.1",
     description="A client for the Flow API.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/goodwright/flowbio",
-    author="Sam Ireland",
-    author_email="sam@goodwright.com",
+    author="Flow.bio",
+    author_email="engineering@flow.bio",
     license="MIT",
     classifiers=[
         "Development Status :: 4 - Beta",
