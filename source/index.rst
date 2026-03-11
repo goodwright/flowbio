@@ -41,3 +41,4 @@ by v2.
    Home <self>
    v2/index
    legacy
+   faq
