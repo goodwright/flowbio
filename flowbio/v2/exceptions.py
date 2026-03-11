@@ -38,10 +38,11 @@ class BadRequestError(FlowApiError):
 
 
 class AnnotationValidationError(BadRequestError):
-    """Raised when the annotation upload returns hard validation errors.
+    """Raised when the annotation upload in :meth:`~flowbio.v2.samples.SampleResource.upload_multiplexed_data` returns hard validation errors, or when annotation upload is told not to
+    ignore warnings.
 
     The annotation endpoint returns ``{"validation": [...]}`` with status 400
-    for errors that cannot be ignored (as opposed to warnings which can).
+    for errors that cannot be ignored (as opposed to warnings which can, unless they are not configured to be ignored).
 
     :param errors: List of validation error dicts from the response.
     """
