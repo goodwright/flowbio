@@ -1,11 +1,12 @@
 # flowbio
 
-A client for the Flow API.
+A client for the Flow API. Full documentation is available at [https://goodwright.github.io/flowbio/](https://goodwright.github.io/flowbio/).
 
 ```python
     
 import flowbio
 
+# NB: this client is being deprecated. Please use the v2 client instead. See the [v2 documentation](https://goodwright.github.io/flowbio/v2/) for details.
 client = flowbio.Client()
 client.login("your_username", "your_password")
 
