@@ -380,3 +380,233 @@ class TestTransportTokenManagement:
 
         assert route.calls[0].request.headers["authorization"] == f"Bearer {token}"
 
+
+class TestTransportRefreshOnUnauthorized:
+
+    @respx.mock
+    def test_get_refreshes_and_retries_when_authenticated(self) -> None:
+        old_token = "expired.jwt"
+        new_token = "fresh.jwt"
+        me_route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            side_effect=[
+                httpx.Response(401, json={"error": "Not authorized"}),
+                httpx.Response(200, json={"username": "alice"}),
+            ],
+        )
+        token_route = respx.get(f"{DEFAULT_BASE_URL}/token").mock(
+            return_value=httpx.Response(200, json={"token": new_token, "user": {}}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        transport.set_token(old_token)
+        result = transport.get("/me")
+
+        assert result == {"username": "alice"}
+        assert token_route.called
+        assert me_route.call_count == 2
+        assert me_route.calls[0].request.headers["authorization"] == f"Bearer {old_token}"
+        assert me_route.calls[1].request.headers["authorization"] == f"Bearer {new_token}"
+
+    @respx.mock
+    def test_post_refreshes_and_retries_chunk_upload(self) -> None:
+        old_token = "expired.jwt"
+        new_token = "fresh.jwt"
+        upload_route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample").mock(
+            side_effect=[
+                httpx.Response(401, json={"error": "Not authorized"}),
+                httpx.Response(200, json={"data_id": "d1"}),
+            ],
+        )
+        respx.get(f"{DEFAULT_BASE_URL}/token").mock(
+            return_value=httpx.Response(200, json={"token": new_token, "user": {}}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        transport.set_token(old_token)
+        result = transport.post(
+            "/upload/sample",
+            data={"sample_name": "test"},
+            files={"blob": ("test.txt", b"chunk-bytes", "application/octet-stream")},
+        )
+
+        assert result == {"data_id": "d1"}
+        assert upload_route.call_count == 2
+        assert upload_route.calls[1].request.headers["authorization"] == f"Bearer {new_token}"
+
+    @respx.mock
+    def test_get_bytes_refreshes_and_retries(self) -> None:
+        old_token = "expired.jwt"
+        new_token = "fresh.jwt"
+        download_route = respx.get(f"{DEFAULT_BASE_URL}/annotation/generic").mock(
+            side_effect=[
+                httpx.Response(401, json={"error": "Not authorized"}),
+                httpx.Response(200, content=b"xlsx-bytes"),
+            ],
+        )
+        respx.get(f"{DEFAULT_BASE_URL}/token").mock(
+            return_value=httpx.Response(200, json={"token": new_token, "user": {}}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        transport.set_token(old_token)
+        result = transport.get_bytes("/annotation/generic")
+
+        assert result == b"xlsx-bytes"
+        assert download_route.call_count == 2
+
+    @respx.mock
+    def test_refresh_failure_surfaces_original_401(self) -> None:
+        original_error = "Not authorized"
+        me_route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            return_value=httpx.Response(401, json={"error": original_error}),
+        )
+        token_route = respx.get(f"{DEFAULT_BASE_URL}/token").mock(
+            return_value=httpx.Response(400, json={"error": "Refresh token not valid"}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        transport.set_token("expired.jwt")
+
+        with pytest.raises(AuthenticationError) as exc_info:
+            transport.get("/me")
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.message == original_error
+        assert token_route.called
+        assert me_route.call_count == 1
+
+    @respx.mock
+    def test_refresh_returning_non_json_body_surfaces_original_401(self) -> None:
+        # A misconfigured proxy could return 200 with HTML — the original
+        # 401 must still surface rather than a JSONDecodeError.
+        original_error = "Not authorized"
+        me_route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            return_value=httpx.Response(401, json={"error": original_error}),
+        )
+        respx.get(f"{DEFAULT_BASE_URL}/token").mock(
+            return_value=httpx.Response(
+                200,
+                content=b"<html>maintenance</html>",
+                headers={"content-type": "text/html"},
+            ),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        transport.set_token("expired.jwt")
+
+        with pytest.raises(AuthenticationError) as exc_info:
+            transport.get("/me")
+
+        assert exc_info.value.message == original_error
+        assert me_route.call_count == 1
+
+    @respx.mock
+    def test_refresh_returning_no_token_surfaces_original_401(self) -> None:
+        # /token returns 200 with no token key when no refresh cookie was sent
+        # (TokenCredentials path) — the original 401 must still surface.
+        original_error = "Not authorized"
+        me_route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            return_value=httpx.Response(401, json={"error": original_error}),
+        )
+        token_route = respx.get(f"{DEFAULT_BASE_URL}/token").mock(
+            return_value=httpx.Response(200, json={"error": "No refresh token supplied"}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        transport.set_token("token-credentials.jwt")
+
+        with pytest.raises(AuthenticationError) as exc_info:
+            transport.get("/me")
+
+        assert exc_info.value.message == original_error
+        assert token_route.called
+        assert me_route.call_count == 1
+
+    @respx.mock
+    def test_refresh_sends_cookie_set_by_login(self) -> None:
+        refresh_cookie = "refresh-cookie-from-login"
+        respx.post(f"{DEFAULT_BASE_URL}/login").mock(
+            return_value=httpx.Response(
+                200,
+                json={"token": "access.jwt", "user": {}},
+                headers={"Set-Cookie": f"flow_refresh_token={refresh_cookie}; HttpOnly; Path=/"},
+            ),
+        )
+        respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            side_effect=[
+                httpx.Response(401, json={"error": "Not authorized"}),
+                httpx.Response(200, json={}),
+            ],
+        )
+        token_route = respx.get(f"{DEFAULT_BASE_URL}/token").mock(
+            return_value=httpx.Response(200, json={"token": "new.jwt", "user": {}}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        transport.post("/login", json={"username": "x", "password": "y"})
+        transport.set_token("access.jwt")
+        transport.get("/me")
+
+        assert token_route.called
+        cookie_header = token_route.calls[0].request.headers.get("cookie", "")
+        assert f"flow_refresh_token={refresh_cookie}" in cookie_header
+
+    @respx.mock
+    def test_rotated_refresh_cookie_used_on_next_refresh(self) -> None:
+        first_cookie = "first-refresh-cookie"
+        rotated_cookie = "rotated-refresh-cookie"
+        respx.post(f"{DEFAULT_BASE_URL}/login").mock(
+            return_value=httpx.Response(
+                200,
+                json={"token": "access.jwt", "user": {}},
+                headers={"Set-Cookie": f"flow_refresh_token={first_cookie}; HttpOnly; Path=/"},
+            ),
+        )
+        respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            side_effect=[
+                httpx.Response(401, json={"error": "Not authorized"}),
+                httpx.Response(200, json={}),
+                httpx.Response(401, json={"error": "Not authorized"}),
+                httpx.Response(200, json={}),
+            ],
+        )
+        token_route = respx.get(f"{DEFAULT_BASE_URL}/token").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json={"token": "second.jwt", "user": {}},
+                    headers={"Set-Cookie": f"flow_refresh_token={rotated_cookie}; HttpOnly; Path=/"},
+                ),
+                httpx.Response(200, json={"token": "third.jwt", "user": {}}),
+            ],
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        transport.post("/login", json={"username": "x", "password": "y"})
+        transport.set_token("access.jwt")
+        transport.get("/me")
+        transport.get("/me")
+
+        assert token_route.call_count == 2
+        first_cookie_header = token_route.calls[0].request.headers.get("cookie", "")
+        second_cookie_header = token_route.calls[1].request.headers.get("cookie", "")
+        assert f"flow_refresh_token={first_cookie}" in first_cookie_header
+        assert f"flow_refresh_token={rotated_cookie}" in second_cookie_header
+
+    @respx.mock
+    def test_no_refresh_when_no_authorization_header(self) -> None:
+        login_route = respx.post(f"{DEFAULT_BASE_URL}/login").mock(
+            return_value=httpx.Response(401, json={"error": "Not authorized"}),
+        )
+        token_route = respx.get(f"{DEFAULT_BASE_URL}/token").mock(
+            return_value=httpx.Response(200, json={"token": "new.jwt", "user": {}}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(AuthenticationError):
+            transport.post("/login", json={"username": "x", "password": "y"})
+
+        assert login_route.call_count == 1
+        assert not token_route.called
+
