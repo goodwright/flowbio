@@ -1,4 +1,4 @@
-from http import HTTPStatus
+from http import HTTPMethod, HTTPStatus
 from importlib.metadata import PackageNotFoundError, version
 
 import httpx
@@ -16,12 +16,22 @@ except PackageNotFoundError:
     _CLIENT_VERSION = "unknown"
 
 
+class _RefreshFailed(Exception):
+    """Internal signal that GET /token did not yield a usable access token."""
+
+
 class HttpTransport:
     """Low-level HTTP transport for the Flow API.
 
     Wraps an ``httpx.Client`` and handles base URL management, default
     headers (User-Agent, Authorization), and error mapping from HTTP
     status codes to typed exceptions.
+
+    On a 401 response from a request that carried a Bearer token, the
+    transport automatically calls ``GET /token`` to mint a fresh access
+    JWT (using the ``flow_refresh_token`` cookie set by ``/login``) and
+    retries the original request once. If the refresh fails, the
+    original 401 surfaces unchanged.
 
     :param base_url: The base URL of the Flow API
         (e.g. ``"https://app.flow.bio/api"``).
@@ -62,6 +72,37 @@ class HttpTransport:
         clean_path = path.lstrip("/")
         return f"{self._base_url}/{clean_path}"
 
+    def _request(self, method: HTTPMethod, url: str, **kwargs) -> httpx.Response:
+        response = self._client.request(method, url, **kwargs)
+        needs_access_token_refresh = response.status_code == HTTPStatus.UNAUTHORIZED and self._can_refresh()
+        if needs_access_token_refresh:
+            try:
+                self._refresh_access_token()
+                return self._client.request(method, url, **kwargs)
+            except _RefreshFailed:
+                pass
+
+        return response
+
+    def _can_refresh(self) -> bool:
+        return "Authorization" in self._client.headers
+
+    def _refresh_access_token(self) -> None:
+        # Calls httpx directly (not self._request) to avoid recursion.
+        # The refresh cookie travels via the httpx cookie jar.
+        response = self._client.get(self._url("/token"))
+        if not response.is_success:
+            raise _RefreshFailed
+        try:
+            new_token = response.json().get("token")
+        except (ValueError, AttributeError) as e:
+            # ValueError: body is not JSON (e.g. proxy returned HTML).
+            # AttributeError: body is JSON but not a dict (e.g. list, null).
+            raise _RefreshFailed from e
+        if not new_token:
+            raise _RefreshFailed
+        self.set_token(new_token)
+
     def get(self, path: str, params: dict | None = None) -> dict:
         """Send a GET request to the API.
 
@@ -70,7 +111,7 @@ class HttpTransport:
         :returns: The parsed JSON response body.
         :raises FlowApiError: If the API returns a non-success status code.
         """
-        response = self._client.get(self._url(path), params=params)
+        response = self._request(HTTPMethod.GET, self._url(path), params=params)
         return self._handle_response(response)
 
     def get_bytes(self, path: str, params: dict | None = None) -> bytes:
@@ -84,7 +125,7 @@ class HttpTransport:
         :returns: The raw response bytes.
         :raises FlowApiError: If the API returns a non-success status code.
         """
-        response = self._client.get(self._url(path), params=params)
+        response = self._request(HTTPMethod.GET, self._url(path), params=params)
         self._raise_for_error(response)
         return response.content
 
@@ -105,12 +146,15 @@ class HttpTransport:
         :param data: Optional form fields for multipart requests.
         :param files: Optional file fields for multipart requests,
             following the httpx file format
-            (e.g. ``{"file": ("name.txt", bytes, "text/plain")}``).
+            (e.g. ``{"file": ("name.txt", bytes, "text/plain")}``). File
+            contents must be ``bytes``, not a file handle, so the request
+            can be retried after a token refresh without exhausting the
+            stream.
         :returns: The parsed JSON response body.
         :raises FlowApiError: If the API returns a non-success status code.
         """
-        response = self._client.post(
-            self._url(path), json=json, data=data, files=files,
+        response = self._request(
+            HTTPMethod.POST, self._url(path), json=json, data=data, files=files,
         )
         return self._handle_response(response)
 
