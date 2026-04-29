@@ -23,6 +23,11 @@ class ClientConfig:
         connect, read, write, and pool. Defaults to
         ``timedelta(seconds=60)``. Increase if uploads against a slow
         backend are producing ``ReadTimeout`` errors.
+    :param upload_retries: Number of times to retry a single chunk POST
+        on transient failures (read/write timeout, 502/503/504 from an
+        upstream proxy). Set to ``0`` to disable. Defaults to ``3``.
+        The chunk protocol is idempotent on the byte offset, so retrying
+        the same chunk is safe.
 
     Example usage::
 
@@ -40,6 +45,7 @@ class ClientConfig:
     show_progress: bool = True
     connection_retries: int = 3
     request_timeout: timedelta = timedelta(seconds=60)
+    upload_retries: int = 3
 
 
 class Client:

@@ -28,14 +28,40 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import httpx
 from pydantic import BaseModel, Field
+from tenacity import (
+    Retrying,
+    retry_if_exception,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 from tqdm import tqdm
 
 from flowbio.v2._pagination import PageIterator
-from flowbio.v2.exceptions import AnnotationValidationError, BadRequestError
+from flowbio.v2.exceptions import (
+    AnnotationValidationError,
+    BadRequestError,
+    FlowApiError,
+)
+
+_RETRYABLE_STATUS_CODES = frozenset({
+    HTTPStatus.BAD_GATEWAY,
+    HTTPStatus.SERVICE_UNAVAILABLE,
+    HTTPStatus.GATEWAY_TIMEOUT,
+})
+
+
+def _is_retryable_api_error(exc: BaseException) -> bool:
+    return (
+        isinstance(exc, FlowApiError)
+        and exc.status_code in _RETRYABLE_STATUS_CODES
+    )
 
 if TYPE_CHECKING:
     from flowbio.v2.client import ClientConfig
@@ -426,13 +452,25 @@ class SampleResource:
                     **(extra_fields or {}),
                 }
                 chunk = f.read(chunk_size)
-                result = self._transport.post(
+                result = self._post_chunk_with_retry(
                     endpoint,
                     data=form_data,
                     files={"blob": (file_path.name, chunk, "application/octet-stream")},
                 )
                 data_id = result.get("data_id") or result.get("id")
         return result
+
+    def _post_chunk_with_retry(self, endpoint: str, data: dict, files: dict) -> dict:
+        retryer = Retrying(
+            retry=(
+                retry_if_exception_type((httpx.ReadTimeout, httpx.WriteTimeout))
+                | retry_if_exception(_is_retryable_api_error)
+            ),
+            stop=stop_after_attempt(self._config.upload_retries + 1),
+            wait=wait_exponential(multiplier=1),
+            reraise=True,
+        )
+        return retryer(self._transport.post, endpoint, data=data, files=files)
 
     def _upload_annotation(
         self, file_path: Path, ignore_warnings: bool,
