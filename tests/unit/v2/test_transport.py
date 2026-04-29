@@ -309,6 +309,49 @@ class TestTransportErrorBodyPreservation:
         assert exc_info.value.message == body
 
 
+class TestTransportNonJsonErrorBody:
+    # Upstream proxies (Cloudflare, GCP load balancers, nginx) return their
+    # own HTML/plain-text error pages on 5xx. The transport must surface a
+    # FlowApiError with a useful message instead of leaking JSONDecodeError.
+
+    @respx.mock
+    def test_html_error_body_raises_flow_api_error_with_status(self) -> None:
+        html_body = b"<html><body><h1>502 Bad Gateway</h1></body></html>"
+        respx.post(f"{DEFAULT_BASE_URL}/upload/sample").mock(
+            return_value=httpx.Response(
+                HTTPStatus.BAD_GATEWAY,
+                content=html_body,
+                headers={"content-type": "text/html"},
+            ),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(FlowApiError) as exc_info:
+            transport.post(
+                "/upload/sample",
+                data={"sample_name": "test"},
+                files={"blob": ("c", b"chunk", "application/octet-stream")},
+            )
+
+        assert exc_info.value.status_code == HTTPStatus.BAD_GATEWAY
+        assert "502 Bad Gateway" in str(exc_info.value)
+
+    @respx.mock
+    def test_empty_error_body_raises_flow_api_error_with_status(self) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            return_value=httpx.Response(HTTPStatus.GATEWAY_TIMEOUT, content=b""),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(FlowApiError) as exc_info:
+            transport.get("/me")
+
+        assert exc_info.value.status_code == HTTPStatus.GATEWAY_TIMEOUT
+        assert "504" in str(exc_info.value)
+
+
 class TestTransportGetBytes:
 
     @respx.mock

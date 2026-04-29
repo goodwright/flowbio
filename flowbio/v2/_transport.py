@@ -57,12 +57,29 @@ class HttpTransport:
         if response.is_success:
             return
 
-        body = response.json()
-        message = body.get("error", body)
+        try:
+            body = response.json()
+        except ValueError:
+            # Upstream proxies (Cloudflare, GCP load balancers, nginx) return
+            # HTML/plain-text on 5xx instead of the API's JSON envelope.
+            message = self._non_json_error_message(response)
+        else:
+            message = body.get("error", body)
         exception_class = self._STATUS_TO_EXCEPTION.get(
             response.status_code, FlowApiError,
         )
         raise exception_class(response.status_code, message)
+
+    @staticmethod
+    def _non_json_error_message(response: httpx.Response) -> str:
+        base = f"HTTP {response.status_code} {response.reason_phrase}"
+        body_text = response.text.strip()
+        if not body_text:
+            return base
+        snippet = body_text[:500]
+        if len(body_text) > 500:
+            snippet += "..."
+        return f"{base}: {snippet}"
 
     def _handle_response(self, response: httpx.Response) -> dict:
         self._raise_for_error(response)
