@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from unittest.mock import patch
 
 import httpx
@@ -113,11 +114,19 @@ class TestClientConfig:
         assert config.chunk_size == 1_000_000
         assert config.show_progress is True
         assert config.connection_retries == 3
+        assert config.request_timeout == timedelta(seconds=60)
 
     def test_custom_connection_retries(self) -> None:
         config = ClientConfig(connection_retries=0)
 
         assert config.connection_retries == 0
+
+    def test_custom_request_timeout(self) -> None:
+        custom_timeout = timedelta(minutes=2)
+
+        config = ClientConfig(request_timeout=custom_timeout)
+
+        assert config.request_timeout == custom_timeout
 
     def test_config_is_immutable(self) -> None:
         config = ClientConfig()
@@ -137,4 +146,17 @@ class TestClientConfig:
         mock_transport.assert_called_once_with(
             "https://app.flow.bio/api",
             connection_retries=connection_retries,
+            request_timeout=timedelta(seconds=60),
+        )
+
+    @patch("flowbio.v2.client.HttpTransport")
+    def test_client_passes_request_timeout_to_transport(self, mock_transport) -> None:
+        request_timeout = timedelta(minutes=2)
+
+        Client(config=ClientConfig(request_timeout=request_timeout))
+
+        mock_transport.assert_called_once_with(
+            "https://app.flow.bio/api",
+            connection_retries=3,
+            request_timeout=request_timeout,
         )

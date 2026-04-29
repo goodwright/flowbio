@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from http import HTTPStatus
 from unittest.mock import patch
 
@@ -39,6 +40,41 @@ class TestTransportConnectionRetries:
         HttpTransport(DEFAULT_BASE_URL, connection_retries=0)
 
         mock_http_transport.assert_called_once_with(retries=0)
+
+
+class TestTransportRequestTimeout:
+
+    @patch("flowbio.v2._transport.httpx.Client")
+    def test_default_timeout_applies_to_read_write_pool(self, mock_client) -> None:
+        HttpTransport(DEFAULT_BASE_URL)
+
+        timeout = mock_client.call_args.kwargs["timeout"]
+        assert isinstance(timeout, httpx.Timeout)
+        assert timeout.read == 60.0
+        assert timeout.write == 60.0
+        assert timeout.pool == 60.0
+
+    @patch("flowbio.v2._transport.httpx.Client")
+    def test_custom_timeout_applies_to_read_write_pool(self, mock_client) -> None:
+        custom_timeout = timedelta(minutes=2)
+
+        HttpTransport(DEFAULT_BASE_URL, request_timeout=custom_timeout)
+
+        timeout = mock_client.call_args.kwargs["timeout"]
+        assert isinstance(timeout, httpx.Timeout)
+        assert timeout.read == custom_timeout.total_seconds()
+        assert timeout.write == custom_timeout.total_seconds()
+        assert timeout.pool == custom_timeout.total_seconds()
+
+    @patch("flowbio.v2._transport.httpx.Client")
+    def test_connect_timeout_is_independent_of_request_timeout(self, mock_client) -> None:
+        # Connect time is bounded by DNS + TCP handshake, so a long
+        # request_timeout shouldn't bleed into how long we wait for a
+        # connection that's not coming.
+        HttpTransport(DEFAULT_BASE_URL, request_timeout=timedelta(minutes=10))
+
+        timeout = mock_client.call_args.kwargs["timeout"]
+        assert timeout.connect == 10.0
 
 
 class TestTransportGet:
