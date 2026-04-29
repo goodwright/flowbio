@@ -1,3 +1,4 @@
+from datetime import timedelta
 from http import HTTPMethod, HTTPStatus
 from importlib.metadata import PackageNotFoundError, version
 
@@ -38,13 +39,33 @@ class HttpTransport:
     :param connection_retries: Number of retries on connection failure.
         Only retries ``ConnectError``/``ConnectTimeout`` (TCP never
         established), so it is safe for all HTTP methods. Defaults to ``3``.
+    :param request_timeout: Per-request timeout for read, write, and
+        pool acquisition. Defaults to ``timedelta(seconds=60)``. Connect
+        timeout is fixed at 10 s independently — TCP handshake is bounded
+        by DNS/network, not by how long the API takes to respond. httpx's
+        own default of 5 s for read is too short for upload chunks
+        against a busy backend.
     """
 
-    def __init__(self, base_url: str, connection_retries: int = 3) -> None:
+    _CONNECT_TIMEOUT_SECONDS = 10.0
+
+    def __init__(
+        self,
+        base_url: str,
+        connection_retries: int = 3,
+        request_timeout: timedelta = timedelta(seconds=60),
+    ) -> None:
         self._base_url = base_url.rstrip("/")
+        request_seconds = request_timeout.total_seconds()
         self._client = httpx.Client(
             headers={"User-Agent": f"flowbio-python/{_CLIENT_VERSION}"},
             transport=httpx.HTTPTransport(retries=connection_retries),
+            timeout=httpx.Timeout(
+                connect=self._CONNECT_TIMEOUT_SECONDS,
+                read=request_seconds,
+                write=request_seconds,
+                pool=request_seconds,
+            ),
         )
 
     _STATUS_TO_EXCEPTION: dict[int, type[FlowApiError]] = {

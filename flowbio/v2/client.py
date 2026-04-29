@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import timedelta
 
 from flowbio.v2._transport import HttpTransport
 from flowbio.v2.auth import Credentials
@@ -18,20 +19,27 @@ class ClientConfig:
         when the TCP connection was never established, so it is safe for
         all HTTP methods including POST. Set to ``0`` to disable.
         Defaults to ``3``.
+    :param request_timeout: Per-request timeout, applied uniformly to
+        connect, read, write, and pool. Defaults to
+        ``timedelta(seconds=60)``. Increase if uploads against a slow
+        backend are producing ``ReadTimeout`` errors.
 
     Example usage::
 
+        from datetime import timedelta
         from flowbio.v2 import Client, ClientConfig
 
         client = Client(config=ClientConfig(
             chunk_size=5_000_000,
             show_progress=False,
+            request_timeout=timedelta(minutes=2),
         ))
     """
 
     chunk_size: int = 1_000_000
     show_progress: bool = True
     connection_retries: int = 3
+    request_timeout: timedelta = timedelta(seconds=60)
 
 
 class Client:
@@ -68,6 +76,7 @@ class Client:
         self._transport = HttpTransport(
             base_url,
             connection_retries=self._config.connection_retries,
+            request_timeout=self._config.request_timeout,
         )
         self._samples = SampleResource(self._transport, self._config)
 
