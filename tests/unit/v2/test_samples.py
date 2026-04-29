@@ -567,6 +567,55 @@ class TestUploadSample:
         sleep_durations = [call.args[0] for call in mock_sleep.call_args_list]
         assert sleep_durations == [1.0, 2.0, 4.0]
 
+    @respx.mock
+    @patch("time.sleep")
+    def test_chunk_retry_backoff_caps_at_60_seconds(
+        self, mock_sleep, tmp_path: Path,
+    ) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"A")
+        route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample")
+        # 8 retries before success exposes attempts where 2**n exceeds 60.
+        route.side_effect = [httpx.ReadTimeout("timeout")] * 8 + [
+            httpx.Response(200, json={"sample_id": "s1", "data_id": "d1"}),
+        ]
+
+        client = Client(config=ClientConfig(
+            show_progress=False, upload_retries=8,
+        ))
+        client.samples.upload_sample(
+            name="My Sample",
+            sample_type="rna_seq",
+            data={"reads1": file_path},
+        )
+
+        sleep_durations = [call.args[0] for call in mock_sleep.call_args_list]
+        assert sleep_durations == [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 60.0, 60.0]
+
+    @respx.mock
+    @patch("time.sleep")
+    def test_upload_retries_zero_disables_retry(
+        self, mock_sleep, tmp_path: Path,
+    ) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"A")
+        route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample")
+        route.side_effect = httpx.ReadTimeout("read timed out")
+
+        client = Client(config=ClientConfig(
+            show_progress=False, upload_retries=0,
+        ))
+
+        with pytest.raises(httpx.ReadTimeout):
+            client.samples.upload_sample(
+                name="My Sample",
+                sample_type="rna_seq",
+                data={"reads1": file_path},
+            )
+
+        assert route.call_count == 1
+        assert mock_sleep.call_count == 0
+
     def test_rejects_invalid_reads_key(self, tmp_path: Path) -> None:
         file_path = tmp_path / "reads.fastq"
         file_path.write_bytes(b"ATCG")

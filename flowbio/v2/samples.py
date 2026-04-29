@@ -467,7 +467,7 @@ class SampleResource:
                 | retry_if_exception(_is_retryable_api_error)
             ),
             stop=stop_after_attempt(self._config.upload_retries + 1),
-            wait=wait_exponential(multiplier=1),
+            wait=wait_exponential(multiplier=1, max=60),
             reraise=True,
         )
         return retryer(self._transport.post, endpoint, data=data, files=files)
