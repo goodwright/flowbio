@@ -19,10 +19,12 @@ class ClientConfig:
         when the TCP connection was never established, so it is safe for
         all HTTP methods including POST. Set to ``0`` to disable.
         Defaults to ``3``.
-    :param request_timeout: Per-request timeout, applied uniformly to
-        connect, read, write, and pool. Defaults to
-        ``timedelta(seconds=60)``. Increase if uploads against a slow
-        backend are producing ``ReadTimeout`` errors.
+    :param request_timeout: Per-request timeout for read, write, and
+        pool acquisition. Defaults to ``timedelta(seconds=60)``. Connect
+        timeout is independent and fixed at 10 s — a slow API response
+        shouldn't dictate how long we wait for a TCP connection that
+        isn't coming. Increase ``request_timeout`` if uploads against a
+        slow backend are producing ``ReadTimeout`` errors.
     :param upload_retries: Number of times to retry a single chunk POST
         on transient failures (read/write timeout, 502/503/504 from an
         upstream proxy). Set to ``0`` to disable. Defaults to ``3``.
