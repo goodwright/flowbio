@@ -115,6 +115,7 @@ class TestClientConfig:
         assert config.show_progress is True
         assert config.connection_retries == 3
         assert config.request_timeout == timedelta(seconds=60)
+        assert config.upload_retries == 3
 
     def test_custom_connection_retries(self) -> None:
         config = ClientConfig(connection_retries=0)

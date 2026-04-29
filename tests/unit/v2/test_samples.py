@@ -1,12 +1,17 @@
+from http import HTTPStatus
 from pathlib import Path
-from unittest.mock import ANY
+from unittest.mock import ANY, patch
 
 import httpx
 import pytest
 import respx
 
 from flowbio.v2.client import Client, ClientConfig
-from flowbio.v2.exceptions import AnnotationValidationError, NotFoundError
+from flowbio.v2.exceptions import (
+    AnnotationValidationError,
+    BadRequestError,
+    NotFoundError,
+)
 from flowbio.v2.samples import (
     MetadataAttribute,
     MultiplexedUpload,
@@ -445,6 +450,122 @@ class TestUploadSample:
                 sample_type="rna_seq",
                 data={"reads1": file_path},
             )
+
+    @respx.mock
+    @patch("time.sleep")
+    def test_retries_chunk_on_read_timeout(self, _mock_sleep, tmp_path: Path) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"A")
+        route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample")
+        route.side_effect = [
+            httpx.ReadTimeout("read timed out"),
+            httpx.Response(200, json={"sample_id": "s1", "data_id": "d1"}),
+        ]
+
+        client = Client(config=ClientConfig(show_progress=False))
+        result = client.samples.upload_sample(
+            name="My Sample",
+            sample_type="rna_seq",
+            data={"reads1": file_path},
+        )
+
+        assert result == Sample(id="s1")
+        assert route.call_count == 2
+
+    @respx.mock
+    @patch("time.sleep")
+    def test_retries_chunk_on_502(self, _mock_sleep, tmp_path: Path) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"A")
+        route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample")
+        route.side_effect = [
+            httpx.Response(HTTPStatus.BAD_GATEWAY, content=b"<html>bad gw</html>"),
+            httpx.Response(200, json={"sample_id": "s1", "data_id": "d1"}),
+        ]
+
+        client = Client(config=ClientConfig(show_progress=False))
+        result = client.samples.upload_sample(
+            name="My Sample",
+            sample_type="rna_seq",
+            data={"reads1": file_path},
+        )
+
+        assert result == Sample(id="s1")
+        assert route.call_count == 2
+
+    @respx.mock
+    @patch("time.sleep")
+    def test_does_not_retry_chunk_on_400(self, _mock_sleep, tmp_path: Path) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"A")
+        route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample").mock(
+            return_value=httpx.Response(
+                HTTPStatus.BAD_REQUEST,
+                json={"error": "Invalid sample type"},
+            ),
+        )
+
+        client = Client(config=ClientConfig(show_progress=False))
+
+        with pytest.raises(BadRequestError):
+            client.samples.upload_sample(
+                name="My Sample",
+                sample_type="rna_seq",
+                data={"reads1": file_path},
+            )
+
+        assert route.call_count == 1
+
+    @respx.mock
+    @patch("time.sleep")
+    def test_exhausts_retries_on_persistent_read_timeout(
+        self, _mock_sleep, tmp_path: Path,
+    ) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"A")
+        route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample")
+        route.side_effect = httpx.ReadTimeout("read timed out")
+
+        client = Client(config=ClientConfig(
+            show_progress=False, upload_retries=2,
+        ))
+
+        with pytest.raises(httpx.ReadTimeout):
+            client.samples.upload_sample(
+                name="My Sample",
+                sample_type="rna_seq",
+                data={"reads1": file_path},
+            )
+
+        # upload_retries=2 means 1 initial attempt + 2 retries = 3 total
+        assert route.call_count == 3
+
+    @respx.mock
+    @patch("time.sleep")
+    def test_chunk_retry_uses_exponential_backoff(
+        self, mock_sleep, tmp_path: Path,
+    ) -> None:
+        file_path = tmp_path / "reads.fastq"
+        file_path.write_bytes(b"A")
+        route = respx.post(f"{DEFAULT_BASE_URL}/upload/sample")
+        route.side_effect = [
+            httpx.ReadTimeout("read timed out"),
+            httpx.ReadTimeout("read timed out"),
+            httpx.ReadTimeout("read timed out"),
+            httpx.Response(200, json={"sample_id": "s1", "data_id": "d1"}),
+        ]
+
+        client = Client(config=ClientConfig(
+            show_progress=False, upload_retries=3,
+        ))
+        client.samples.upload_sample(
+            name="My Sample",
+            sample_type="rna_seq",
+            data={"reads1": file_path},
+        )
+
+        sleep_durations = [call.args[0] for call in mock_sleep.call_args_list]
+        assert sleep_durations == [1.0, 2.0, 4.0]
 
     def test_rejects_invalid_reads_key(self, tmp_path: Path) -> None:
         file_path = tmp_path / "reads.fastq"
