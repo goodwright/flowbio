@@ -26,46 +26,21 @@ Upload with metadata, project, and organism::
 """
 from __future__ import annotations
 
-import math
 from collections.abc import Sequence
-from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import httpx
 from pydantic import BaseModel, Field
-from tenacity import (
-    Retrying,
-    retry_if_exception,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
-from tqdm import tqdm
 
 from flowbio.v2._pagination import PageIterator
 from flowbio.v2.exceptions import (
     AnnotationValidationError,
     BadRequestError,
-    FlowApiError,
 )
 
-_RETRYABLE_STATUS_CODES = frozenset({
-    HTTPStatus.BAD_GATEWAY,
-    HTTPStatus.SERVICE_UNAVAILABLE,
-    HTTPStatus.GATEWAY_TIMEOUT,
-})
-
-
-def _is_retryable_api_error(exc: BaseException) -> bool:
-    return (
-        isinstance(exc, FlowApiError)
-        and exc.status_code in _RETRYABLE_STATUS_CODES
-    )
-
 if TYPE_CHECKING:
-    from flowbio.v2.client import ClientConfig
     from flowbio.v2._transport import HttpTransport
+    from flowbio.v2._uploads import ChunkedUploader
 
 
 class SampleType(BaseModel, frozen=True):
@@ -164,9 +139,9 @@ class SampleResource:
         sample_types = client.samples.get_types()
     """
 
-    def __init__(self, transport: HttpTransport, config: ClientConfig) -> None:
+    def __init__(self, transport: HttpTransport, uploader: ChunkedUploader) -> None:
         self._transport = transport
-        self._config = config
+        self._uploader = uploader
 
     def upload_sample(
         self,
@@ -234,7 +209,7 @@ class SampleResource:
             fields = self._build_sample_fields(
                 name, sample_type, metadata, project_id, organism_id,
             )
-            result = self._upload_in_chunks(
+            result = self._uploader.upload_in_chunks(
                 "/upload/sample",
                 file_path,
                 extra_fields={
@@ -312,7 +287,7 @@ class SampleResource:
         data_ids: list[str] = []
         for _, file_path in files:
             extra_fields = {"reads1": data_ids[0]} if data_ids else {}
-            result = self._upload_in_chunks(
+            result = self._uploader.upload_in_chunks(
                 "/upload/multiplexed", file_path, extra_fields,
             )
             data_ids.append(result["id"])
@@ -422,61 +397,11 @@ class SampleResource:
         item["options"] = self._resolve_options(item)
         return MetadataAttribute(**item)
 
-    def _upload_in_chunks(
-        self,
-        endpoint: str,
-        file_path: Path,
-        extra_fields: dict | None = None,
-    ) -> dict:
-        chunk_size = self._config.chunk_size
-        file_size = file_path.stat().st_size
-        num_chunks = max(1, math.ceil(file_size / chunk_size))
-        data_id: str | None = None
-        result: dict = {}
-        chunks = range(num_chunks)
-        if self._config.show_progress:
-            chunks = tqdm(
-                chunks,
-                desc=f"Uploading {file_path.name}",
-                unit="chunk",
-            )
-        with open(file_path, "rb") as f:
-            for chunk_index in chunks:
-                is_last_chunk = chunk_index == num_chunks - 1
-                form_data: dict[str, str | bool | list[str] | None] = {
-                    "filename": file_path.name,
-                    # API uses this as a byte offset to verify upload resumption
-                    "expected_file_size": str(chunk_index * chunk_size),
-                    "is_last": is_last_chunk,
-                    "data": data_id,
-                    **(extra_fields or {}),
-                }
-                chunk = f.read(chunk_size)
-                result = self._post_chunk_with_retry(
-                    endpoint,
-                    data=form_data,
-                    files={"blob": (file_path.name, chunk, "application/octet-stream")},
-                )
-                data_id = result.get("data_id") or result.get("id")
-        return result
-
-    def _post_chunk_with_retry(self, endpoint: str, data: dict, files: dict) -> dict:
-        retryer = Retrying(
-            retry=(
-                retry_if_exception_type((httpx.ReadTimeout, httpx.WriteTimeout))
-                | retry_if_exception(_is_retryable_api_error)
-            ),
-            stop=stop_after_attempt(self._config.upload_retries + 1),
-            wait=wait_exponential(multiplier=1, max=60),
-            reraise=True,
-        )
-        return retryer(self._transport.post, endpoint, data=data, files=files)
-
     def _upload_annotation(
         self, file_path: Path, ignore_warnings: bool,
     ) -> tuple[str, list[dict]]:
         try:
-            result = self._upload_in_chunks("/upload/annotation", file_path)
+            result = self._uploader.upload_in_chunks("/upload/annotation", file_path)
             return result["id"], []
         except BadRequestError as e:
             if isinstance(e.message, dict) and "validation" in e.message:
@@ -487,7 +412,7 @@ class SampleResource:
                         errors=e.message["warnings"],
                     ) from e
                 warnings = e.message["warnings"]
-                result = self._upload_in_chunks(
+                result = self._uploader.upload_in_chunks(
                     "/upload/annotation",
                     file_path,
                     extra_fields={"ignore_warnings": True},
