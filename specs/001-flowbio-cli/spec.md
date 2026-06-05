@@ -20,6 +20,16 @@ Commands are grouped by the kind of thing they act on (`flowbio data …` for ge
 command works both for a human reading concise messages in a terminal and for an automated caller
 that needs structured, parseable output and stable exit codes to branch on.
 
+## Clarifications
+
+### Session 2026-06-05
+
+- Q: What are the environment variable names for the token, token-file path, and base URL? → A: `FLOW_API_TOKEN`, `FLOW_TOKEN_FILE`, `FLOW_API_URL`
+- Q: How should the CLI detect a sample sheet's format (CSV vs TSV)? → A: Accept CSV only for now — it matches the `batch-template` output format; TSV is not supported
+- Q: Should the CLI pre-validate `--sample-type`/`--data-type` against the server before uploading? → A: No — send the type and surface the server's rejection (backend is source of truth); an invalid type returns the bad-request exit code
+- Q: What happens when `data upload` is run without `--data-type`? → A: `--data-type` is optional; when omitted no data type is sent and the library/server applies its own default/inference
+- Q: Does `upload-batch` upload rows sequentially or concurrently? → A: Sequentially, in sheet row order (one row at a time); "first failure" for `--stop-on-error` means the first failing row in order
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Upload a generic data file from the command line (Priority: P1)
@@ -121,7 +131,7 @@ columns are required for `rna_seq`.
 
 ### User Story 4 - Upload a batch of samples from a sample sheet (Priority: P4)
 
-A user has filled in a sample sheet (CSV or TSV) with one demultiplexed sample per row — reads
+A user has filled in a sample sheet (CSV) with one demultiplexed sample per row — reads
 paths plus metadata — and wants to upload them all in one command, applying a single sample type to
 every row. Before any upload happens, every row is validated; nothing should fail silently.
 
@@ -151,8 +161,8 @@ many succeeded, failed, and were skipped.
    already-uploaded rows are reported.
 6. **Given** `--json`, **When** the batch finishes, **Then** a single document with `uploaded`,
    `failed`, and `skipped` lists plus a `counts` summary is produced.
-7. **Given** an Excel (`.xlsx`) file is passed as the sheet, **When** the command runs, **Then** it
-   fails with a clear "export to CSV" message (CSV/TSV only).
+7. **Given** a non-CSV file (e.g. an Excel `.xlsx` or a `.tsv`) is passed as the sheet, **When** the
+   command runs, **Then** it fails with a clear "export to CSV" message (CSV only).
 
 ---
 
@@ -221,9 +231,9 @@ sheet.csv`; confirm the data identifiers, annotation identifier, and any warning
 - **FR-006**: When no authentication option is given, the system MUST read a token from the default
   token file location (`~/.config/flow/api-token`) if it exists and is non-empty, otherwise fall
   back to a username/password prompt.
-- **FR-007**: The system MUST allow a token to be supplied directly (`--token`, or an equivalent
-  environment variable) and MUST allow a token file path to be supplied (`--token-file`, or an
-  equivalent environment variable).
+- **FR-007**: The system MUST allow a token to be supplied directly (`--token`, or the
+  `FLOW_API_TOKEN` environment variable) and MUST allow a token file path to be supplied
+  (`--token-file`, or the `FLOW_TOKEN_FILE` environment variable).
 - **FR-008**: The system MUST allow forcing an interactive username/password login, prompting for
   the password (the password MUST NEVER be accepted as a flag or environment variable).
 - **FR-009**: Credential resolution precedence MUST be: forced login → direct token → token file →
@@ -234,19 +244,24 @@ sheet.csv`; confirm the data identifiers, annotation identifier, and any warning
 - **FR-011**: Supplying both a direct token and forced interactive login MUST be a usage error.
 - **FR-012**: If a prompt would be required but the session is not interactive, the system MUST fail
   fast with a clear message instructing the caller to supply a token, rather than blocking on input.
-- **FR-013**: The system MUST allow the Flow API base URL to be overridden (`--base-url`, or an
-  equivalent environment variable).
+- **FR-013**: The system MUST allow the Flow API base URL to be overridden (`--base-url`, or the
+  `FLOW_API_URL` environment variable).
 
 #### `data upload`
 
 - **FR-014**: `data upload PATH` MUST upload the file at `PATH` and report the resulting data
   identifier; `--filename` MUST override the stored name and `--data-type` MUST set the data type.
+  `--data-type` MUST be optional; when omitted, no data type is sent and the library/server applies
+  its own default or inference. The CLI MUST NOT pre-validate `--data-type`; an unknown value is sent
+  as-is and the server's rejection surfaces via the bad-request exit code.
 - **FR-015**: `data upload --directory` MUST upload the file as a directory archive.
 
 #### `samples upload`
 
 - **FR-016**: `samples upload` MUST require a sample name, a sample type, and a first reads file, and
-  MUST accept an optional second reads file for paired-end samples.
+  MUST accept an optional second reads file for paired-end samples. The CLI MUST NOT pre-validate the
+  sample type against the server's known list; an unknown type is sent as-is and the server's
+  rejection surfaces via the bad-request exit code.
 - **FR-017**: `samples upload` MUST accept an optional project identifier and organism identifier.
 - **FR-018**: Metadata MUST be accepted both as repeated `--metadata key=value` pairs (split on the
   first `=`) and as a single `--metadata-json` object of identifier→value; the two MUST be merged,
@@ -256,8 +271,9 @@ sheet.csv`; confirm the data identifiers, annotation identifier, and any warning
 
 #### Sample sheet (`batch-template` and `upload-batch`)
 
-- **FR-020**: A sample sheet MUST be a CSV (comma) or TSV (tab) file with one sample per row; Excel
-  files MUST be rejected with a clear "export to CSV" message.
+- **FR-020**: A sample sheet MUST be a CSV (comma-delimited) file with one sample per row, matching
+  the format produced by `batch-template`; non-CSV files (e.g. Excel `.xlsx`, or tab-delimited
+  `.tsv`) MUST be rejected with a clear "export to CSV" message.
 - **FR-021**: The sheet's reserved columns MUST be `name` (required), `reads1` (required), `reads2`,
   `project`, and `organism`; the sample type MUST NOT be a column — it is supplied once via
   `--sample-type` and applied to every row.
@@ -286,8 +302,9 @@ sheet.csv`; confirm the data identifiers, annotation identifier, and any warning
 - **FR-029**: If any row fails validation, the system MUST report all per-row errors (each with its
   1-based row number and sample name) and MUST upload nothing, returning a usage/input exit code;
   `--skip-invalid` MUST instead skip invalid rows (reporting them with reasons) and upload the rest.
-- **FR-030**: During upload, the system MUST by default continue past per-row upload failures,
-  recording each against its row; `--stop-on-error` MUST abort on the first upload failure while
+- **FR-030**: Rows MUST be uploaded sequentially, in sheet row order (one row at a time). During
+  upload, the system MUST by default continue past per-row upload failures, recording each against
+  its row; `--stop-on-error` MUST abort on the first failing row (the earliest in row order) while
   preserving and reporting already-uploaded rows.
 - **FR-031**: Every validation error and upload failure MUST be surfaced with its row number, sample
   name, and the underlying message — nothing fails silently.
@@ -346,7 +363,7 @@ sheet.csv`; confirm the data identifiers, annotation identifier, and any warning
 - **Metadata attribute**: A named property a sample can carry, keyed by a stable identifier; may be
   globally required or required only for certain sample types; may have a closed set of allowed
   values; may permit an additional free-text annotation.
-- **Sample sheet**: A CSV/TSV table of demultiplexed samples (one per row) with reserved columns
+- **Sample sheet**: A CSV table of demultiplexed samples (one per row) with reserved columns
   (name, reads files, project, organism) and metadata-identifier columns.
 - **Annotation sheet**: A file submitted alongside multiplexed reads that the backend uses to
   demultiplex them server-side.
