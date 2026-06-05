@@ -27,9 +27,14 @@ Create a client, log in, and upload a sample::
         data={"reads1": Path("reads_R1.fastq.gz")},
     )
     print(f"Created sample {sample.id}")
+
+    # Upload a generic data file
+    data = client.data.upload_data(Path("counts.tsv"))
+    print(f"Uploaded data {data.id}")
 """
 from flowbio.v2.auth import TokenCredentials, UsernamePasswordCredentials
 from flowbio.v2.client import Client, ClientConfig
+from flowbio.v2.data import Data
 from flowbio.v2.exceptions import AnnotationValidationError
 from flowbio.v2.samples import MetadataAttribute, MultiplexedUpload, Organism, Project, Sample, SampleType
 
@@ -37,6 +42,7 @@ __all__ = [
     "AnnotationValidationError",
     "Client",
     "ClientConfig",
+    "Data",
     "MetadataAttribute",
     "MultiplexedUpload",
     "Organism",

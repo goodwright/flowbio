@@ -1,4 +1,4 @@
-from flowbio.v2 import Client, UsernamePasswordCredentials
+from flowbio.v2 import Client, Data, UsernamePasswordCredentials
 
 
 class TestTopLevelExports:
@@ -7,6 +7,11 @@ class TestTopLevelExports:
         from flowbio.v2.client import Client as DirectClient
 
         assert Client is DirectClient
+
+    def test_data_is_exported(self) -> None:
+        from flowbio.v2.data import Data as DirectData
+
+        assert Data is DirectData
 
     def test_username_password_credentials_is_exported(self) -> None:
         from flowbio.v2.auth import (

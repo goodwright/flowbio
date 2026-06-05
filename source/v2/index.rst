@@ -16,4 +16,5 @@ v2 Client
 
    auth
    samples
+   data
    exceptions

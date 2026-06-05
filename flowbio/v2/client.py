@@ -4,6 +4,7 @@ from datetime import timedelta
 from flowbio.v2._transport import HttpTransport
 from flowbio.v2._uploads import ChunkedUploader
 from flowbio.v2.auth import Credentials
+from flowbio.v2.data import DataResource
 from flowbio.v2.samples import SampleResource
 
 
@@ -89,11 +90,17 @@ class Client:
         )
         uploader = ChunkedUploader(self._transport, self._config)
         self._samples = SampleResource(self._transport, uploader)
+        self._data = DataResource(uploader)
 
     @property
     def samples(self) -> SampleResource:
         """Access sample-related operations (types, metadata, upload)."""
         return self._samples
+
+    @property
+    def data(self) -> DataResource:
+        """Access generic data-file operations (upload)."""
+        return self._data
 
     def log_in(self, credentials: Credentials) -> None:
         """Authenticate with the Flow API.
