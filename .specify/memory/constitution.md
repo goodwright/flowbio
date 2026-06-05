@@ -25,9 +25,8 @@ Templates requiring updates:
      placeholder; no change required (gates derived at plan time).
   ✅ .specify/templates/spec-template.md — aligns with Principle IV (testable requirements,
      measurable success criteria); no change required.
-  ⚠ .specify/templates/tasks-template.md — marks tests as "OPTIONAL - only if explicitly
-     requested," which is in tension with Principle I (Test-First, NON-NEGOTIABLE). Left as-is
-     for now (sample/illustrative content); revisit if it drives generated tasks to skip tests.
+  ✅ .specify/templates/tasks-template.md — reconciled with Principle I: test tasks are now
+     MANDATORY and test-first (write → confirm red → implement) rather than optional/on-request.
 
 Follow-up TODOs: none.
 -->
