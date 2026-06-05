@@ -169,7 +169,7 @@ class SampleResource:
                 data={"reads1": Path("reads_R1.fastq.gz")},
                 metadata={"strandedness": "forward"},
             )
-            print(f"Sample ID: {result.sample_id}")
+            print(f"Sample ID: {result.id}")
 
         :param name: The name of the sample.
         :param sample_type: The sample type identifier
