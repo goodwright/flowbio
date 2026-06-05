@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from flowbio.v2._transport import HttpTransport
+from flowbio.v2._uploads import ChunkedUploader
 from flowbio.v2.auth import Credentials
 from flowbio.v2.samples import SampleResource
 
@@ -86,7 +87,8 @@ class Client:
             connection_retries=self._config.connection_retries,
             request_timeout=self._config.request_timeout,
         )
-        self._samples = SampleResource(self._transport, self._config)
+        uploader = ChunkedUploader(self._transport, self._config)
+        self._samples = SampleResource(self._transport, uploader)
 
     @property
     def samples(self) -> SampleResource:
