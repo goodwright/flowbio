@@ -33,7 +33,7 @@ def register(
         "--name",
         required=True,
         metavar="NAME",
-        help="Sample name (must not contain spaces).",
+        help="Sample name (spaces are rejected server-side).",
     )
     upload.add_argument(
         "--sample-type",
@@ -117,7 +117,7 @@ def _parse_pairs(pairs: list[str] | None) -> dict[str, str]:
     result: dict[str, str] = {}
     for pair in pairs or []:
         key, separator, value = pair.partition("=")
-        if not separator:
+        if not separator or not key:
             raise CliUsageError(f"Invalid --metadata '{pair}': expected KEY=VALUE.")
         result[key] = value
     return result
@@ -132,4 +132,10 @@ def _parse_json(json_text: str | None) -> dict[str, str]:
         raise CliUsageError(f"--metadata-json is not valid JSON: {error}") from error
     if not isinstance(parsed, dict):
         raise CliUsageError("--metadata-json must be a JSON object.")
-    return {str(key): str(value) for key, value in parsed.items()}
+    non_string = sorted(key for key, value in parsed.items() if not isinstance(value, str))
+    if non_string:
+        raise CliUsageError(
+            f"--metadata-json values must be strings; non-string value(s) for: "
+            f"{', '.join(non_string)}",
+        )
+    return dict(parsed)

@@ -122,7 +122,8 @@ sent as-is and validated server-side.
 - `--metadata KEY=VALUE`, repeatable. The split is on the **first** `=`, so a
   value may itself contain `=` (`--metadata formula=a=b+c`).
 - `--metadata-json '{"identifier": "value", ...}'`, a single JSON object — handy
-  for an agent that already holds a dictionary.
+  for an agent that already holds a dictionary. Values must be strings; a
+  non-string value is a usage error (exit `2`).
 
 Supplying the same key through both is a usage error (exit `2`) raised before any
 upload. A free-text annotation companion to an attribute is an ordinary key of
