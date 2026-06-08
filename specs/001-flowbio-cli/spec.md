@@ -339,10 +339,10 @@ sheet.csv`; confirm the data identifiers, annotation identifier, and any warning
   from the published package, pinned to an exact version, in an ephemeral isolated environment
   (e.g. `uvx --from "flowbio==X.Y.Z" flowbio …`), without relying on a global install, the working
   directory, or local source.
-- **FR-040**: Any runtime dependency the feature adds MUST install from the published package into
-  the ephemeral isolated environment of FR-039; the team is free to add dependencies where they
-  improve the implementation, but the install closure SHOULD be kept lean so on-demand cold starts
-  stay fast.
+- **FR-040**: Adding runtime dependencies is permitted, not prohibited: the team MAY add a
+  dependency where it improves the implementation. Any dependency the feature adds MUST install from
+  the published package into the ephemeral isolated environment of FR-039, and the install closure
+  SHOULD be kept lean so on-demand cold starts stay fast.
 
 #### Documentation
 

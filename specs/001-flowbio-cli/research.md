@@ -15,8 +15,10 @@ decision, why it was chosen, and the alternatives rejected.
 - **Alternatives rejected**:
   - *click* / *typer* — ergonomic, but each adds a runtime dependency (typer
     also pulls `click` + `rich`), enlarging the closure and slowing cold start
-    for no capability this spec needs. Violates Principle V (YAGNI) and FR-040's
-    "keep the install closure lean".
+    for no capability this spec needs. Preferred against here on Principle V
+    (YAGNI) and FR-040's lean-closure goal — not because dependencies are
+    forbidden (FR-040 permits them with justification), but because none is
+    warranted for this feature.
 
 ## 2. Global options accepted before *and* after the verb (FR-004)
 
@@ -108,8 +110,9 @@ decision, why it was chosen, and the alternatives rejected.
 - **Rationale**: CSV matches `batch-template` output; stdlib `csv` needs no
   dependency (FR-040). Validating up front (all errors at once, nothing
   uploaded) delivers SC-005.
-- **Alternatives rejected**: `pandas`/`openpyxl` for Excel — out of scope and a
-  heavy dependency; rejected per spec and FR-040.
+- **Alternatives rejected**: `pandas`/`openpyxl` for Excel — out of scope
+  (CSV-only per the clarification) and a heavy dependency we chose to avoid to
+  keep the closure lean (FR-040 would permit it if a future need justified it).
 
 ## 8. Sequential batch upload semantics (FR-030)
 
