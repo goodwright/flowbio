@@ -26,7 +26,7 @@ def register(
         help="Upload a generic data file.",
         description="Upload a generic data file to the Flow platform.",
     )
-    upload.set_defaults(command_parser=upload, handler=upload_command)
+    upload.set_defaults(command_parser=upload, handler=_upload_command)
     upload.add_argument(
         "path",
         metavar="PATH",
@@ -49,7 +49,7 @@ def register(
     )
 
 
-def upload_command(args: argparse.Namespace, client: Client, output: Output) -> ExitCode:
+def _upload_command(args: argparse.Namespace, client: Client, output: Output) -> ExitCode:
     """Upload a generic data file and report its identifier.
 
     :param args: Parsed command-line arguments.
