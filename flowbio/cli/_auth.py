@@ -74,7 +74,14 @@ def resolve_credentials(
             "--token cannot be combined with --login; choose one.",
         )
 
-    credentials = _resolve_strategy(token, token_file, login, username, environment)
+    # Collapse flag-or-env up-front (flag wins) so the strategy below works in
+    # terms of a single resolved token and token-file path.
+    resolved_token = token or environment.get("FLOW_API_TOKEN")
+    resolved_token_file = token_file or environment.get("FLOW_TOKEN_FILE")
+
+    credentials = _resolve_strategy(
+        resolved_token, resolved_token_file, login, username,
+    )
     return ResolvedCredentials(credentials=credentials, base_url=resolved_base_url)
 
 
@@ -83,28 +90,21 @@ def _resolve_strategy(
     token_file: str | None,
     login: bool,
     username: str | None,
-    environment: Mapping[str, str],
 ) -> Credentials:
     if login:
         return _prompt_for_credentials(username)
-    if token is not None:
+    if token:
         return TokenCredentials(token)
-    env_token = environment.get("FLOW_API_TOKEN")
-    if env_token:
-        return TokenCredentials(env_token)
-    if token_file is not None:
+    if token_file:
         return TokenCredentials(_read_required_token_file(Path(token_file)))
-    env_token_file = environment.get("FLOW_TOKEN_FILE")
-    if env_token_file:
-        return TokenCredentials(_read_required_token_file(Path(env_token_file)))
-    default_token = _read_optional_token_file(DEFAULT_TOKEN_FILE)
+    default_token = _read_token_file(DEFAULT_TOKEN_FILE)
     if default_token:
         return TokenCredentials(default_token)
     return _prompt_for_credentials(username)
 
 
 def _read_required_token_file(path: Path) -> str:
-    token = _read_optional_token_file(path)
+    token = _read_token_file(path)
     if not token:
         raise CliUsageError(
             f"Token file {path} is missing or empty.",
@@ -112,7 +112,7 @@ def _read_required_token_file(path: Path) -> str:
     return token
 
 
-def _read_optional_token_file(path: Path) -> str | None:
+def _read_token_file(path: Path) -> str | None:
     if not path.is_file():
         return None
     return path.read_text().strip() or None
