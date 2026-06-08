@@ -31,7 +31,7 @@ setup(
     packages=["flowbio", "flowbio.v2", "flowbio.cli"],
     entry_points={
         "console_scripts": [
-            "flowbio = flowbio.cli._main:main",
+            "flowbio = flowbio.cli:main",
         ],
     },
     python_requires="!=2.*, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*, !=3.6.*, !=3.7.*",
