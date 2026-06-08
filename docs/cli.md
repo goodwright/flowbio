@@ -20,14 +20,18 @@ every level.
 Credentials are resolved in this order (highest priority first):
 
 1. `--login` — force an interactive username/password login.
-2. `--token TOKEN` / `FLOW_API_TOKEN` — use this token directly.
-3. `--token-file PATH` / `FLOW_TOKEN_FILE` — read the token from this file.
-4. The default token file `~/.config/flow/api-token`.
+2. `--token TOKEN`, or the `FLOW_API_TOKEN` environment variable — use this
+   token directly.
+3. `--token-file PATH`, or the `FLOW_TOKEN_FILE` environment variable — read the
+   token from this file.
+4. The default token file `~/.config/flow/api-token` — used **only when none of
+   the above is supplied**.
 5. An interactive username/password prompt (TTY only).
 
-The base URL is resolved as `--base-url URL` > `FLOW_API_URL` > the library
-default (`https://app.flow.bio/api`). For tokens and the base URL, an explicit
-flag always beats the environment variable, which beats the default.
+The base URL is resolved as `--base-url URL` > the `FLOW_API_URL` environment
+variable > the library default (`https://app.flow.bio/api`). For both tokens and
+the base URL, an explicit flag always beats the environment variable, which
+beats the default.
 
 The **password is only ever read from an interactive prompt** — never from a
 flag or environment variable. If a prompt would be required but stdin is not a
@@ -78,12 +82,9 @@ Upload a generic data file.
 flowbio data upload PATH [--filename NAME] [--data-type TYPE] [--directory]
 ```
 
-| Option | Description |
-|--------|-------------|
-| `PATH` (positional) | Local file to upload. |
-| `--filename NAME` | Override the name the file is stored under on Flow. |
-| `--data-type TYPE` | Optional data-type identifier (sent as-is; validated server-side). |
-| `--directory` | Upload `PATH` as a directory archive (`.zip`/`.tar`/`.tar.gz`). |
+Run `flowbio data upload --help` for the full option list. Note that
+`--data-type` is sent as-is and validated server-side — the CLI does not
+pre-check it.
 
 **Output** — human: a confirmation line with the data identifier on stdout.
 `--json`: `{"id": "<data_id>"}` on stdout.
