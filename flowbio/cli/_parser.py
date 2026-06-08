@@ -43,8 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Upload generic data files to the Flow platform.",
     )
     data_parser.set_defaults(command_parser=data_parser)
-    data_verbs = data_parser.add_subparsers(dest="verb", metavar="<verb>")
-    _register_data_commands(data_verbs, global_parent)
+    register_data(data_parser, global_parent)
 
     samples_parser = resources.add_parser(
         "samples",
@@ -53,8 +52,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Upload and manage sequencing samples on the Flow platform.",
     )
     samples_parser.set_defaults(command_parser=samples_parser)
-    samples_verbs = samples_parser.add_subparsers(dest="verb", metavar="<verb>")
-    _register_samples_commands(samples_verbs, global_parent)
+    # Samples verbs land in US2; register the (empty) verb subparser now so
+    # `flowbio samples` reports a missing verb rather than failing to parse.
+    samples_parser.add_subparsers(dest="verb", metavar="<verb>")
 
     return parser
 
@@ -106,19 +106,6 @@ def _build_global_parent() -> argparse.ArgumentParser:
         help="Username for --login (the password is always prompted).",
     )
     return parent
-
-
-def _register_data_commands(
-    verbs: argparse._SubParsersAction, global_parent: argparse.ArgumentParser,
-) -> None:
-    """Register ``data`` verbs."""
-    register_data(verbs, global_parent)
-
-
-def _register_samples_commands(
-    verbs: argparse._SubParsersAction, global_parent: argparse.ArgumentParser,
-) -> None:
-    """Register ``samples`` verbs. Filled in per user-story phase."""
 
 
 def _resolve_version() -> str:
