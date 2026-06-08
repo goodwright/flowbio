@@ -79,8 +79,6 @@ def resolve_credentials(
             "--token cannot be combined with --login; choose one.",
         )
 
-    # Collapse flag-or-env up-front (flag wins) so the strategy below works in
-    # terms of a single resolved token and token-file path.
     resolved_token = token or environment.get("FLOW_API_TOKEN")
     resolved_token_file = token_file or _env_path(environment.get("FLOW_TOKEN_FILE"))
 

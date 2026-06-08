@@ -93,12 +93,9 @@ def _dispatch(args: argparse.Namespace) -> int:
 
 
 def _extract_global_options(args: argparse.Namespace) -> GlobalOptions:
-    # This is the translation boundary: raw argparse strings become named types
-    # here, so the rest of the CLI works in terms of Token/Path/BaseUrl.
-    #
-    # getattr with a default is required: the global options use
-    # default=argparse.SUPPRESS, so an attribute is absent unless the user
-    # passed it (that is what lets them appear before *or* after the verb).
+    # getattr with a default is required because the global options use
+    # default=argparse.SUPPRESS: an attribute is absent unless the user passed
+    # it, which is what lets the options appear before or after the verb.
     token = getattr(args, "token", None)
     token_file = getattr(args, "token_file", None)
     base_url = getattr(args, "base_url", None)

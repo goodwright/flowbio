@@ -24,6 +24,18 @@ Test **public functionality**, not private internals.
   `run_cli` fixture is one way to do this, not the only one.
 - Test-first: write a failing test, confirm red, implement, confirm green.
 
+## Comments
+
+Use comments sparingly.
+
+- Do **not** add comments that describe implementation strategy or flow (what
+  the code does, or "the X below"/"so the rest of … works"). Self-documenting
+  code carries that.
+- Only comment to document **why** a non-obvious decision was made, and write it
+  so it stands on its own — no reference to the work in progress or surrounding
+  steps. (Good: "getattr is required because the options use SUPPRESS, so the
+  attribute is absent unless passed.")
+
 ## CLI (`flowbio/cli`)
 
 - User docs (`docs/cli.md`) should not duplicate `--help` output. Keep the docs
