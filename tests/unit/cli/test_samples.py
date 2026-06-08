@@ -152,3 +152,43 @@ class TestSamplesUpload:
         fields, _ = parse_multipart(route.calls[0].request)
         assert fields["cell_type"] == "Neuron"
         assert fields["cell_type__annotation"] == annotation
+
+    @respx.mock
+    def test_metadata_json_non_string_value_is_usage_error_before_upload(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        offending_key = "paired"
+        route = _mock_single_upload()
+
+        result = run_cli(
+            "samples", "upload", "--name", "s1", "--sample-type", "rna_seq",
+            "--reads1", str(_reads(tmp_path, "r1.fq.gz")),
+            "--metadata-json", json.dumps({offending_key: True}),
+            "--token", TOKEN, "--no-progress",
+        )
+
+        assert result.exit_code == 2
+        assert route.call_count == 0
+        assert offending_key in result.stderr
+
+    @respx.mock
+    def test_empty_metadata_key_is_usage_error_before_upload(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        route = _mock_single_upload()
+
+        result = run_cli(
+            "samples", "upload", "--name", "s1", "--sample-type", "rna_seq",
+            "--reads1", str(_reads(tmp_path, "r1.fq.gz")),
+            "--metadata", "=orphan",
+            "--token", TOKEN, "--no-progress",
+        )
+
+        assert result.exit_code == 2
+        assert route.call_count == 0
+
+    def test_name_help_does_not_promise_cli_space_validation(self, run_cli) -> None:
+        result = run_cli("samples", "upload", "--help")
+
+        assert result.exit_code == 0
+        assert "must not contain spaces" not in result.stdout
