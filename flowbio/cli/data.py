@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 
 from flowbio.cli._exit_codes import ExitCode
+from flowbio.cli._files import existing_file
 from flowbio.cli._output import Output
 from flowbio.v2.client import Client
 
@@ -56,7 +57,7 @@ def upload_command(args: argparse.Namespace, client: Client, output: Output) -> 
     :returns: :attr:`ExitCode.SUCCESS` on success.
     """
     data = client.data.upload_data(
-        Path(args.path),
+        existing_file(Path(args.path)),
         filename=args.filename,
         data_type=args.data_type,
         is_directory=args.directory,

@@ -133,6 +133,33 @@ class TestDataUpload:
 
         assert result.exit_code == 3
 
+    def test_missing_file_exits_usage_without_traceback(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        missing = tmp_path / "nope.tsv"
+
+        result = run_cli(
+            "data", "upload", str(missing), "--token", TOKEN, "--no-progress",
+        )
+
+        assert result.exit_code == 2
+        assert "Traceback" not in result.stderr
+        assert str(missing) in result.stderr
+
+    def test_missing_file_json_emits_error_document(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        missing = tmp_path / "nope.tsv"
+
+        result = run_cli(
+            "data", "upload", str(missing),
+            "--token", TOKEN, "--no-progress", "--json",
+        )
+
+        assert result.exit_code == 2
+        assert result.stdout == ""
+        assert "message" in json.loads(result.stderr)
+
     @respx.mock
     def test_json_error_document_carries_message_and_status(
         self, run_cli, tmp_path: Path,
