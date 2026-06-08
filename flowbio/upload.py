@@ -4,10 +4,10 @@ import os
 import io
 import math
 import base64
-import warnings
 
 import requests
 from tqdm import tqdm
+from typing_extensions import deprecated
 from pathlib import Path
 from .queries import DATA
 from .mutations import UPLOAD_DATA, UPLOAD_ANNOTATION, UPLOAD_MULTIPLEXED
@@ -61,7 +61,7 @@ class UploadClient:
                 data_id = resp["data"]["uploadData"]["dataId"]
         return self.data(data_id)
 
-    @warnings.deprecated("Being phased out. Use `flowbio.v2.Client.upload_sample` instead.")
+    @deprecated("Being phased out. Use `flowbio.v2.Client.upload_sample` instead.")
     def upload_sample(
         self,
         name: str,
