@@ -54,10 +54,6 @@ def resolve_credentials(
     username/password prompt. Base URL: ``--base-url`` > ``FLOW_API_URL`` >
     the library default.
 
-    Flags are translated to their named types by the caller, so this function
-    works in terms of a :class:`~flowbio.cli._types.Token`, a :class:`Path`, and
-    a :class:`~flowbio.cli._types.BaseUrl` rather than raw strings.
-
     :param token: A token supplied via ``--token``.
     :param token_file: A token-file path supplied via ``--token-file``.
     :param base_url: A base URL supplied via ``--base-url``.
