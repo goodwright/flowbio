@@ -28,9 +28,9 @@ Single-project layout (per plan.md): CLI under `flowbio/cli/`, tests under `test
 
 **Purpose**: Create the CLI package skeleton, register the entry point, and stand up the test harness.
 
-- [ ] T001 Create the `flowbio/cli/` package skeleton: `flowbio/cli/__init__.py` and `flowbio/cli/__main__.py` (the latter dispatching to `flowbio.cli._main:main` so `python -m flowbio.cli` works)
-- [ ] T002 In `setup.py`, add `"flowbio.cli"` to `packages` and register the console script `entry_points={"console_scripts": ["flowbio = flowbio.cli._main:main"]}`
-- [ ] T003 [P] Create `tests/unit/cli/__init__.py` and `tests/unit/cli/conftest.py` with an argv-runner fixture that invokes the CLI in-process, captures stdout/stderr and the returned exit code, and mocks the HTTP layer via `respx` (mirroring `tests/unit/v2/conftest.py`)
+- [X] T001 Create the `flowbio/cli/` package skeleton: `flowbio/cli/__init__.py` and `flowbio/cli/__main__.py` (the latter dispatching to `flowbio.cli._main:main` so `python -m flowbio.cli` works)
+- [X] T002 In `setup.py`, add `"flowbio.cli"` to `packages` and register the console script `entry_points={"console_scripts": ["flowbio = flowbio.cli._main:main"]}`
+- [X] T003 [P] Create `tests/unit/cli/__init__.py` and `tests/unit/cli/conftest.py` with an argv-runner fixture that invokes the CLI in-process, captures stdout/stderr and the returned exit code, and mocks the HTTP layer via `respx` (mirroring `tests/unit/v2/conftest.py`)
 
 ---
 
@@ -44,17 +44,17 @@ Single-project layout (per plan.md): CLI under `flowbio/cli/`, tests under `test
 
 > Write these tests FIRST, run them, and confirm they FAIL (red) before any implementation task below.
 
-- [ ] T004 [P] Write failing tests for the exit-code contract and output rendering in `tests/unit/cli/test_output.py`: `ExitCode` values (0/1/2/3/5 and NOT_FOUND=4 per data-model), `exit_code_for(exc)` mapping (`AuthenticationError→3`, `NotFoundError→4`, `BadRequestError`/`AnnotationValidationError→5`, other `FlowApiError→1`, CLI usage→2), human single result line on stdout, `--json` exactly one document on stdout and nothing else, and the error JSON document on stderr carrying `message` + status code (FR-035, FR-037, FR-038)
-- [ ] T005 [P] Write failing tests for credential resolution in `tests/unit/cli/test_auth.py`: precedence `--login` > `--token`/`FLOW_API_TOKEN` > `--token-file`/`FLOW_TOKEN_FILE` > default `~/.config/flow/api-token` > prompt; base-URL flag > env > default; named token file missing/empty → exit 2; `--token` with `--login` → exit 2; prompt needed but non-interactive stdin → exit 2 fail-fast; password never sourced from flag/env (FR-006…FR-013)
-- [ ] T006 [P] Write failing tests for the top-level parser and dispatch in `tests/unit/cli/test_main.py`: global options accepted identically before and after the verb (FR-004), `flowbio --version` prints version exit 0 (FR-005), explicit help is available and exits 0 at every level (`flowbio --help`, `flowbio data --help`, and a representative `flowbio samples upload --help` each emit help text and exit 0), bare `flowbio` and `flowbio data` (no verb) show help exit 2, unknown resource/verb exit 2 (FR-003)
+- [X] T004 [P] Write failing tests for the exit-code contract and output rendering in `tests/unit/cli/test_output.py`: `ExitCode` values (0/1/2/3/5 and NOT_FOUND=4 per data-model), `exit_code_for(exc)` mapping (`AuthenticationError→3`, `NotFoundError→4`, `BadRequestError`/`AnnotationValidationError→5`, other `FlowApiError→1`, CLI usage→2), human single result line on stdout, `--json` exactly one document on stdout and nothing else, and the error JSON document on stderr carrying `message` + status code (FR-035, FR-037, FR-038)
+- [X] T005 [P] Write failing tests for credential resolution in `tests/unit/cli/test_auth.py`: precedence `--login` > `--token`/`FLOW_API_TOKEN` > `--token-file`/`FLOW_TOKEN_FILE` > default `~/.config/flow/api-token` > prompt; base-URL flag > env > default; named token file missing/empty → exit 2; `--token` with `--login` → exit 2; prompt needed but non-interactive stdin → exit 2 fail-fast; password never sourced from flag/env (FR-006…FR-013)
+- [X] T006 [P] Write failing tests for the top-level parser and dispatch in `tests/unit/cli/test_main.py`: global options accepted identically before and after the verb (FR-004), `flowbio --version` prints version exit 0 (FR-005), explicit help is available and exits 0 at every level (`flowbio --help`, `flowbio data --help`, and a representative `flowbio samples upload --help` each emit help text and exit 0), bare `flowbio` and `flowbio data` (no verb) show help exit 2, unknown resource/verb exit 2 (FR-003)
 
 ### Implementation for Foundational
 
-- [ ] T007 [P] Implement `flowbio/cli/_exit_codes.py`: `ExitCode(IntEnum)` (SUCCESS=0, RUNTIME=1, USAGE=2, AUTH=3, NOT_FOUND=4, BAD_REQUEST=5) and `exit_code_for(exc)` mapping from the `FlowApiError` hierarchy (data-model.md §ExitCode)
-- [ ] T008 [US1] Implement `flowbio/cli/_output.py`: human vs `--json` rendering, single-document stdout discipline, advisories/errors to stderr, and the error JSON document (message + status code) — uses `ExitCode` from T007
-- [ ] T009 Implement `flowbio/cli/_auth.py`: `resolve_credentials(...)` returning `flowbio.v2.auth.Credentials` + resolved base URL with the FR-009 precedence, the named-file and conflicting-flag usage errors, the non-interactive guard, and a `getpass`-only password prompt (depends on T007)
-- [ ] T010 [P] Implement `flowbio/cli/_progress.py`: route progress to stderr and translate `--no-progress` into `ClientConfig(show_progress=False)` (FR-036)
-- [ ] T011 Implement `flowbio/cli/_main.py`: argparse tree (`flowbio <resource> <verb>`), global options registered both before and after the verb, `--version`, help/usage exit-code behaviour, and dispatch that constructs the `Client` (via T009 credentials + base URL, T010 progress config) and injects it into domain handlers (depends on T007, T008, T009, T010)
+- [X] T007 [P] Implement `flowbio/cli/_exit_codes.py`: `ExitCode(IntEnum)` (SUCCESS=0, RUNTIME=1, USAGE=2, AUTH=3, NOT_FOUND=4, BAD_REQUEST=5) and `exit_code_for(exc)` mapping from the `FlowApiError` hierarchy (data-model.md §ExitCode)
+- [X] T008 [US1] Implement `flowbio/cli/_output.py`: human vs `--json` rendering, single-document stdout discipline, advisories/errors to stderr, and the error JSON document (message + status code) — uses `ExitCode` from T007
+- [X] T009 Implement `flowbio/cli/_auth.py`: `resolve_credentials(...)` returning `flowbio.v2.auth.Credentials` + resolved base URL with the FR-009 precedence, the named-file and conflicting-flag usage errors, the non-interactive guard, and a `getpass`-only password prompt (depends on T007)
+- [X] T010 [P] Implement `flowbio/cli/_progress.py`: route progress to stderr and translate `--no-progress` into `ClientConfig(show_progress=False)` (FR-036)
+- [X] T011 Implement `flowbio/cli/_main.py`: argparse tree (`flowbio <resource> <verb>`), global options registered both before and after the verb, `--version`, help/usage exit-code behaviour, and dispatch that constructs the `Client` (via T009 credentials + base URL, T010 progress config) and injects it into domain handlers (depends on T007, T008, T009, T010)
 
 **Checkpoint**: The CLI parses, authenticates, renders output, and maps exit codes — handlers can now be added.
 
@@ -68,12 +68,12 @@ Single-project layout (per plan.md): CLI under `flowbio/cli/`, tests under `test
 
 ### Tests for User Story 1 (MANDATORY — write first) ⚠️
 
-- [ ] T012 [P] [US1] Write failing tests in `tests/unit/cli/test_data.py` covering US1 scenarios 1–6: upload + identifier line (exit 0); `--json` single `{"id": ...}` doc on stdout only; `--filename` overrides stored name; `--directory` uploads as directory archive; server rejection (bad data type) → exit 5; invalid token → exit 3 (contracts/data-upload.md)
+- [X] T012 [P] [US1] Write failing tests in `tests/unit/cli/test_data.py` covering US1 scenarios 1–6: upload + identifier line (exit 0); `--json` single `{"id": ...}` doc on stdout only; `--filename` overrides stored name; `--directory` uploads as directory archive; server rejection (bad data type) → exit 5; invalid token → exit 3 (contracts/data-upload.md)
 
 ### Implementation for User Story 1
 
-- [ ] T013 [US1] Implement `flowbio/cli/data.py` `data upload` handler wrapping `client.data.upload_data(path, filename=..., data_type=..., is_directory=...)` (`--data-type` optional, sent as-is, not pre-validated) and register the `data upload` subcommand in `flowbio/cli/_main.py` with `help=`/description text on every argument so per-command `--help` is self-documenting (FR-003, SC-008) (FR-014, FR-015)
-- [ ] T014 [US1] Document `data upload` (options, output modes, exit codes, worked example) in `docs/cli.md` (FR-041, FR-042)
+- [X] T013 [US1] Implement `flowbio/cli/data.py` `data upload` handler wrapping `client.data.upload_data(path, filename=..., data_type=..., is_directory=...)` (`--data-type` optional, sent as-is, not pre-validated) and register the `data upload` subcommand in `flowbio/cli/_main.py` with `help=`/description text on every argument so per-command `--help` is self-documenting (FR-003, SC-008) (FR-014, FR-015)
+- [X] T014 [US1] Document `data upload` (options, output modes, exit codes, worked example) in `docs/cli.md` (FR-041, FR-042)
 
 **Checkpoint**: MVP — a generic file uploads end-to-end and is independently demonstrable.
 
