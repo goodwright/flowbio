@@ -12,6 +12,8 @@ import json
 from dataclasses import dataclass
 from typing import TextIO
 
+from flowbio.cli._types import JsonValue
+
 
 @dataclass(frozen=True)
 class Output:
@@ -27,7 +29,7 @@ class Output:
     stdout: TextIO
     stderr: TextIO
 
-    def emit_result(self, human_line: str, document: object) -> None:
+    def emit_result(self, human_line: str, document: JsonValue) -> None:
         """Emit a successful command result.
 
         :param human_line: The concise line shown in human mode.
@@ -42,14 +44,16 @@ class Output:
     def emit_advisory(self, message: str) -> None:
         """Emit human-readable advisory text to stderr.
 
-        Suppressed under ``--json`` so stdout stays a single clean document.
+        Suppressed under ``--json`` so machine consumers receive no human-readable
+        prose (stdout stays a single clean document regardless, since advisories
+        never go there).
 
         :param message: The advisory text (e.g. a required-columns summary).
         """
         if not self.json_mode:
             print(message, file=self.stderr)
 
-    def emit_error(self, message: object, status_code: int | None = None) -> None:
+    def emit_error(self, message: JsonValue, status_code: int | None = None) -> None:
         """Emit an error to stderr.
 
         :param message: The error message — a string, or a structured value
@@ -58,7 +62,7 @@ class Output:
             server. Included in the JSON document where present.
         """
         if self.json_mode:
-            document: dict[str, object] = {"message": message}
+            document: dict[str, JsonValue] = {"message": message}
             if status_code is not None:
                 document["status_code"] = int(status_code)
             print(json.dumps(document), file=self.stderr)

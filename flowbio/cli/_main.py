@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 from flowbio.cli._auth import resolve_credentials
@@ -18,6 +19,7 @@ from flowbio.cli._exit_codes import CliUsageError, ExitCode, exit_code_for
 from flowbio.cli._output import Output
 from flowbio.cli._parser import build_parser
 from flowbio.cli._progress import progress_config
+from flowbio.cli._types import BaseUrl, Token
 from flowbio.v2.client import Client
 from flowbio.v2.exceptions import FlowApiError
 
@@ -28,14 +30,14 @@ Handler = Callable[[argparse.Namespace, Client, Output], ExitCode]
 
 @dataclass(frozen=True)
 class GlobalOptions:
-    """The cross-cutting options shared by every command."""
+    """The cross-cutting options shared by every command, in their named types."""
 
     json: bool
     no_progress: bool
-    token: str | None
-    token_file: str | None
-    base_url: str | None
-    login: bool
+    token: Token | None
+    token_file: Path | None
+    base_url: BaseUrl | None
+    force_login: bool
     username: str | None
 
 
@@ -71,7 +73,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             token=options.token,
             token_file=options.token_file,
             base_url=options.base_url,
-            login=options.login,
+            force_login=options.force_login,
             username=options.username,
         )
         client = Client(
@@ -89,21 +91,27 @@ def _dispatch(args: argparse.Namespace) -> int:
 
 
 def _extract_global_options(args: argparse.Namespace) -> GlobalOptions:
+    # This is the translation boundary: raw argparse strings become named types
+    # here, so the rest of the CLI works in terms of Token/Path/BaseUrl.
+    #
     # getattr with a default is required: the global options use
     # default=argparse.SUPPRESS, so an attribute is absent unless the user
     # passed it (that is what lets them appear before *or* after the verb).
+    token = getattr(args, "token", None)
+    token_file = getattr(args, "token_file", None)
+    base_url = getattr(args, "base_url", None)
     return GlobalOptions(
         json=getattr(args, "json", False),
         no_progress=getattr(args, "no_progress", False),
-        token=getattr(args, "token", None),
-        token_file=getattr(args, "token_file", None),
-        base_url=getattr(args, "base_url", None),
-        login=getattr(args, "login", False),
+        token=Token(token) if token is not None else None,
+        token_file=Path(token_file) if token_file is not None else None,
+        base_url=BaseUrl(base_url) if base_url is not None else None,
+        force_login=getattr(args, "login", False),
         username=getattr(args, "username", None),
     )
 
 
-def _coerce_exit_code(code: object) -> int:
+def _coerce_exit_code(code: int | str | None) -> int:
     if code is None:
         return int(ExitCode.SUCCESS)
     if isinstance(code, int):

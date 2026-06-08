@@ -5,22 +5,23 @@ import pytest
 from flowbio.cli import _auth
 from flowbio.cli._auth import DEFAULT_BASE_URL, resolve_credentials
 from flowbio.cli._exit_codes import CliUsageError
+from flowbio.cli._types import BaseUrl, Token
 from flowbio.v2.auth import TokenCredentials, UsernamePasswordCredentials
 
 MISSING_DEFAULT_FILE = Path("/nonexistent/flow/api-token")
 
 
-def _resolve(**overrides):
-    defaults = dict(
-        token=None,
-        token_file=None,
-        base_url=None,
-        login=False,
-        username=None,
-        env={},
+def _resolve(*, token=None, token_file=None, base_url=None, login=False, username=None, env={}):
+    # Mirror the CLI boundary: raw strings become the named types before
+    # reaching resolve_credentials. `login` maps to the force_login parameter.
+    return resolve_credentials(
+        token=Token(token) if token is not None else None,
+        token_file=Path(token_file) if token_file is not None else None,
+        base_url=BaseUrl(base_url) if base_url is not None else None,
+        force_login=login,
+        username=username,
+        env=env,
     )
-    defaults.update(overrides)
-    return resolve_credentials(**defaults)
 
 
 def _assert_token(credentials: object, expected: str) -> None:
