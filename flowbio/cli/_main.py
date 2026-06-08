@@ -54,10 +54,12 @@ def main(argv: list[str] | None = None) -> int:
         # argparse exits 0 for --help/--version and 2 for parse errors.
         return _coerce_exit_code(exit_signal.code)
 
-    if getattr(args, "resource", None) is None:
+    # argparse always sets `resource`; once a resource is engaged it also sets
+    # `verb` (to None if omitted), so direct access is safe after the guard.
+    if args.resource is None:
         parser.print_help(sys.stderr)
         return int(ExitCode.USAGE)
-    if getattr(args, "verb", None) is None:
+    if args.verb is None:
         args.command_parser.print_help(sys.stderr)
         return int(ExitCode.USAGE)
 
