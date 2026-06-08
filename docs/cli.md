@@ -102,3 +102,48 @@ Uploaded data data_xyz
 $ flowbio data upload ./counts.tsv --json
 {"id": "data_xyz"}
 ```
+
+### `samples upload`
+
+Upload a single demultiplexed sample — single-ended (`--reads1`) or paired-end
+(add `--reads2`).
+
+```
+flowbio samples upload --name NAME --sample-type TYPE --reads1 PATH
+    [--reads2 PATH] [--project ID] [--organism ID]
+    [--metadata KEY=VALUE ...] [--metadata-json JSON]
+```
+
+Run `flowbio samples upload --help` for the full option list. The sample type is
+sent as-is and validated server-side.
+
+**Metadata** can be supplied two ways, which are merged:
+
+- `--metadata KEY=VALUE`, repeatable. The split is on the **first** `=`, so a
+  value may itself contain `=` (`--metadata formula=a=b+c`).
+- `--metadata-json '{"identifier": "value", ...}'`, a single JSON object — handy
+  for an agent that already holds a dictionary.
+
+Supplying the same key through both is a usage error (exit `2`) raised before any
+upload. A free-text annotation companion to an attribute is an ordinary key of
+the form `<identifier>__annotation`, passed through unchanged.
+
+**Output** — human: a confirmation line with the sample identifier on stdout.
+`--json`: `{"id": "<sample_id>"}` on stdout.
+
+**Exit codes** — `0` success; `2` conflicting metadata keys; `5` server
+rejection (e.g. an unknown sample type or missing required metadata); `3`
+authentication failure; otherwise the standard mapping above.
+
+**Example**
+
+```bash
+$ flowbio samples upload --name liver_r1 --sample-type rna_seq \
+    --reads1 ./liver_R1.fastq.gz --reads2 ./liver_R2.fastq.gz \
+    --metadata strandedness=reverse
+Uploaded sample samp_abc
+
+$ flowbio samples upload --name liver_r1 --sample-type rna_seq \
+    --reads1 ./liver_R1.fastq.gz --json
+{"id": "samp_abc"}
+```

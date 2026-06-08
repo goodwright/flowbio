@@ -13,6 +13,7 @@ import argparse
 from importlib.metadata import PackageNotFoundError, version
 
 from flowbio.cli._data import register as register_data
+from flowbio.cli._samples import register as register_samples
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,9 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Upload and manage sequencing samples on the Flow platform.",
     )
     samples_parser.set_defaults(command_parser=samples_parser)
-    # Samples verbs land in US2; register the (empty) verb subparser now so
-    # `flowbio samples` reports a missing verb rather than failing to parse.
-    samples_parser.add_subparsers(dest="verb", metavar="<verb>")
+    register_samples(samples_parser, global_parent)
 
     return parser
 
