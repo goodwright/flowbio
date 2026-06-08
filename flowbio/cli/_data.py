@@ -16,9 +16,10 @@ from flowbio.v2.client import Client
 
 
 def register(
-    verbs: argparse._SubParsersAction, global_parent: argparse.ArgumentParser,
+    resource: argparse.ArgumentParser, global_parent: argparse.ArgumentParser,
 ) -> None:
-    """Register the ``data`` verbs on the resource subparser."""
+    """Register the ``data`` verbs on the resource parser."""
+    verbs = resource.add_subparsers(dest="verb", metavar="<verb>")
     upload = verbs.add_parser(
         "upload",
         parents=[global_parent],
