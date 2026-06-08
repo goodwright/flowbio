@@ -19,6 +19,7 @@ from flowbio.cli._auth import resolve_credentials
 from flowbio.cli._exit_codes import CliUsageError, ExitCode, exit_code_for
 from flowbio.cli._output import Output
 from flowbio.cli._progress import progress_config
+from flowbio.cli.data import register as register_data
 from flowbio.v2.client import Client
 from flowbio.v2.exceptions import FlowApiError
 
@@ -160,9 +161,7 @@ def _register_data_commands(
     verbs: argparse._SubParsersAction, global_parent: argparse.ArgumentParser,
 ) -> None:
     """Register ``data`` verbs."""
-    from flowbio.cli.data import register
-
-    register(verbs, global_parent)
+    register_data(verbs, global_parent)
 
 
 def _register_samples_commands(

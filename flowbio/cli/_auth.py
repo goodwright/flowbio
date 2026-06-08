@@ -15,6 +15,7 @@ than hanging.
 from __future__ import annotations
 
 import getpass
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -130,8 +131,6 @@ def _prompt_for_credentials(username: str | None) -> UsernamePasswordCredentials
 
 
 def _environ() -> Mapping[str, str]:
-    import os
-
     return os.environ
 
 
