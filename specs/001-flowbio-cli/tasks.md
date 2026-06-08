@@ -87,13 +87,13 @@ Single-project layout (per plan.md): CLI under `flowbio/cli/`, tests under `test
 
 ### Tests for User Story 2 (MANDATORY — write first) ⚠️
 
-- [ ] T015 [P] [US2] Write failing tests in `tests/unit/cli/test_samples.py` covering US2 scenarios 1–6: single-ended create (exit 0); `--reads2` → paired-end; repeated `--metadata key=value` (split on first `=`, incl. value containing `=`); `--metadata-json` object; same key in both sources → exit 2 before upload; `<identifier>__annotation` companion passed through (contracts/samples-upload.md)
+- [X] T015 [P] [US2] Write failing tests in `tests/unit/cli/test_samples.py` covering US2 scenarios 1–6: single-ended create (exit 0); `--reads2` → paired-end; repeated `--metadata key=value` (split on first `=`, incl. value containing `=`); `--metadata-json` object; same key in both sources → exit 2 before upload; `<identifier>__annotation` companion passed through (contracts/samples-upload.md)
 
 ### Implementation for User Story 2
 
-- [ ] T016 [US2] Implement metadata parsing/merging in `flowbio/cli/samples.py` (`MetadataInput`: split on first `=`, merge `--metadata` with `--metadata-json`, conflicting key → USAGE error, annotation companion passthrough) (FR-018, FR-019)
-- [ ] T017 [US2] Implement the `samples upload` handler in `flowbio/cli/samples.py` wrapping `client.samples.upload_sample(name, sample_type, data, project_id=..., organism_id=..., metadata=...)` (sample type sent as-is) and register the subcommand in `flowbio/cli/_main.py` with `help=`/description text on every argument so per-command `--help` is self-documenting (FR-003, SC-008) (FR-016, FR-017)
-- [ ] T018 [US2] Document `samples upload` (metadata rules, output, exit codes, worked example) in `docs/cli.md` (FR-041, FR-042)
+- [X] T016 [US2] Implement metadata parsing/merging in `flowbio/cli/samples.py` (`MetadataInput`: split on first `=`, merge `--metadata` with `--metadata-json`, conflicting key → USAGE error, annotation companion passthrough) (FR-018, FR-019)
+- [X] T017 [US2] Implement the `samples upload` handler in `flowbio/cli/samples.py` wrapping `client.samples.upload_sample(name, sample_type, data, project_id=..., organism_id=..., metadata=...)` (sample type sent as-is) and register the subcommand in `flowbio/cli/_main.py` with `help=`/description text on every argument so per-command `--help` is self-documenting (FR-003, SC-008) (FR-016, FR-017)
+- [X] T018 [US2] Document `samples upload` (metadata rules, output, exit codes, worked example) in `docs/cli.md` (FR-041, FR-042)
 
 **Checkpoint**: Single-sample upload works independently; the per-row building block for batch upload exists.
 
