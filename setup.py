@@ -20,9 +20,6 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Topic :: Scientific/Engineering :: Bio-Informatics",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3.13",
@@ -34,7 +31,7 @@ setup(
             "flowbio = flowbio.cli:main",
         ],
     },
-    python_requires="!=2.*, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*, !=3.6.*, !=3.7.*",
+    python_requires=">=3.11",
     install_requires=[
         "tqdm",
         "kirjava",
@@ -42,5 +39,6 @@ setup(
         "httpx>=0.28,<1",
         "pydantic>=2,<3",
         "tenacity>=9,<10",
+        "typing_extensions>=4.5",
     ]
 )
