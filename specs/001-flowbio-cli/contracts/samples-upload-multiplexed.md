@@ -16,7 +16,7 @@ flowbio samples upload-multiplexed --reads1 PATH --annotation PATH
 |------|----------|---------|-------|
 | `--reads1 PATH` | yes | `reads["reads1"]` | First reads file. |
 | `--reads2 PATH` | no | `reads["reads2"]` | Paired-end. |
-| `--annotation PATH` | yes | `annotation` | Annotation sheet (server-validated). |
+| `--annotation PATH` | yes | `annotation` | Completed annotation sheet (server-validated); obtained via `annotation-template`. |
 | `--reject-warnings` | no | `ignore_warnings=False` | Warnings reject the upload. |
 
 ## Behaviour
@@ -42,4 +42,4 @@ validation, or warnings with `--reject-warnings`; standard mapping otherwise.
 
 ## Acceptance mapping
 
-Spec User Story 5 scenarios 1–4.
+Spec User Story 5 scenarios 4–7 (scenarios 1–3 cover `annotation-template`).

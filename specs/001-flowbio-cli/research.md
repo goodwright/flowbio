@@ -179,3 +179,31 @@ decision, why it was chosen, and the alternatives rejected.
   project's HTTP mock.
 - **Alternatives rejected**: subprocess-based CLI tests — slower, harder to
   assert on, and unnecessary for argparse handlers.
+
+## 13. `annotation-template` download and its (non-)relationship to `batch-template` (FR-043, FR-044)
+
+- **Decision**: `samples annotation-template` wraps the **existing**
+  `client.samples.get_annotation_template(sample_type) -> bytes`, writing the
+  returned server-generated `.xlsx` workbook to `-o/--output` verbatim. No
+  library change is needed (contrast item 10). `--sample-type` is optional and
+  defaults to `"generic"`. Because the body is binary, the command refuses to
+  write to a terminal stdout (exit `2`); under `--json` it emits a small
+  `{output, sample_type}` document instead.
+- **Investigated**: whether the annotation sheet could double as the
+  `batch-template` CSV (or vice versa). It cannot. Per the flow-api source
+  (`api/samples/annotation.py::build_annotation_template_dataframe`,
+  `api/samples/views.py::annotation`), the annotation sheet is an Excel workbook
+  keyed by metadata-attribute *display names* (with a ` (Required)` suffix),
+  carrying `Type`, `File`, `Sample Name`, `Project Name`, `Organism`, and
+  `PubMed ID` columns; the batch sheet is a CLI-built CSV keyed by attribute
+  *identifiers* with `reads1`/`reads2` columns and no `Type` column. Neither
+  feeds the other unchanged, so the two template commands stay distinct.
+- **Rationale**: Reusing the existing library method keeps the CLI a thin
+  presentation layer (Principle II) and avoids a second library change. Treating
+  the workbook as opaque bytes (no CLI-side parsing) keeps the command simple
+  (Principle V) and honours the backend as the source of truth for the sheet's
+  shape.
+- **Alternatives rejected**: (a) generating the annotation sheet CLI-side from
+  metadata attributes — duplicates server logic and would drift; (b) translating
+  the annotation sheet into the batch CSV (or vice versa) — out of scope and
+  fragile given the divergent column contracts.

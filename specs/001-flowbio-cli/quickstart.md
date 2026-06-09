@@ -89,17 +89,32 @@ row's error and uploads nothing (exit `2`); `--json` returns
 `uploaded`/`failed`/`skipped` + `counts`; passing an `.xlsx`/`.tsv` exits `2`
 with an "export to CSV" message; a row failing at the server exits `1`.
 
-## Scenario 5 — Upload multiplexed reads (User Story 5)
+## Scenario 5 — Multiplexed upload with an annotation sheet (User Story 5)
+
+First download the annotation sheet template, fill it in, then submit it with the
+reads:
 
 ```bash
-flowbio samples upload-multiplexed --reads1 r1.fq.gz --annotation annotation.csv
-flowbio samples upload-multiplexed --reads1 r1.fq.gz --reads2 r2.fq.gz --annotation annotation.csv
-flowbio samples upload-multiplexed --reads1 r1.fq.gz --annotation annotation.csv --reject-warnings
+flowbio samples annotation-template --sample-type rna_seq -o annotation.xlsx
+# → server-generated .xlsx template written to annotation.xlsx; confirmation on stderr
+
+flowbio samples annotation-template -o generic.xlsx            # generic (no --sample-type)
+flowbio samples annotation-template --sample-type rna_seq --json
+# → {"output": "...", "sample_type": "rna_seq"} on stdout, no binary on stdout
 ```
 
-**Expect**: data identifiers, annotation identifier, and warnings reported;
-warnings proceed by default but reject under `--reject-warnings`; failed
-annotation validation exits `5`.
+```bash
+flowbio samples upload-multiplexed --reads1 r1.fq.gz --annotation annotation.xlsx
+flowbio samples upload-multiplexed --reads1 r1.fq.gz --reads2 r2.fq.gz --annotation annotation.xlsx
+flowbio samples upload-multiplexed --reads1 r1.fq.gz --annotation annotation.xlsx --reject-warnings
+```
+
+**Expect**: the template downloads as a binary `.xlsx` (writing to a terminal
+stdout without `-o` exits `2`; an unknown `--sample-type` exits `4`); the
+annotation sheet is **not** the batch sample sheet of Scenario 3/4 and the two are
+not interchangeable. On upload, data identifiers, annotation identifier, and
+warnings are reported; warnings proceed by default but reject under
+`--reject-warnings`; failed annotation validation exits `5`.
 
 ## Cross-cutting checks
 

@@ -12,6 +12,7 @@ state transitions. Field-by-field command I/O lives in [contracts/](./contracts/
 | `Data` (`id`) | `flowbio.v2.data` | `data upload` result |
 | `Sample` (`id`) | `flowbio.v2.samples` | `samples upload`, `upload-batch` rows |
 | `MultiplexedUpload` (`data_ids`, `annotation_id`, `warnings`) | `flowbio.v2.samples` | `upload-multiplexed` result |
+| `get_annotation_template(sample_type) -> bytes` | `flowbio.v2.samples` (existing method) | `annotation-template` — returns the server-generated `.xlsx` workbook verbatim |
 | `SampleType` (`identifier`, `name`, `description`) | `flowbio.v2.samples` | `batch-template` (type validation surfaced by server) |
 | `Project`, `Organism` | `flowbio.v2.samples` | reserved-column values (passed through) |
 
@@ -79,7 +80,7 @@ Validation rules:
 - A prompt needed but `stdin` is not a TTY → `USAGE`, fail fast.
 - Password never sourced from a flag or environment variable.
 
-### `MetadataInput` (parsed) — `flowbio/cli/samples.py`
+### `MetadataInput` (parsed) — `flowbio/cli/_samples.py`
 
 Merged result of `--metadata key=value` (repeated) and `--metadata-json`:
 
@@ -116,7 +117,7 @@ Per-row pre-flight validation (FR-028), all errors collected before any upload:
   attribute `allows_annotation`;
 - empty cells omitted (not sent as empty values).
 
-### `BatchResult` — `flowbio/cli/samples.py`
+### `BatchResult` — `flowbio/cli/_samples.py`
 
 Outcome of `upload-batch`, rendered to human text or the `--json` document
 (FR-032):
@@ -141,7 +142,7 @@ parsed → validated ──(invalid, default)──→ ABORT whole run (nothing 
 Exit code: all uploaded → `SUCCESS`; any pre-flight invalid without
 `--skip-invalid` → `USAGE`; any upload failure → `RUNTIME`.
 
-### `BatchTemplate` descriptor — `flowbio/cli/samples.py`
+### `BatchTemplate` descriptor — `flowbio/cli/_samples.py`
 
 For `batch-template` (FR-024…FR-026). Human mode emits a CSV header row +
 required-columns summary on stderr. `--json` mode emits a per-column descriptor
@@ -159,3 +160,24 @@ Column order: reserved columns first (`name`, `reads1`, `reads2`, `project`,
 `organism`), then one column per metadata attribute, each followed by its
 `<identifier>__annotation` column when `allows_annotation`. There is **no**
 `sample_type` column.
+
+### `AnnotationTemplate` result — `flowbio/cli/_samples.py`
+
+For `annotation-template` (FR-043, FR-044). The command does **not** model the
+sheet's columns — the bytes from `get_annotation_template` are an opaque
+server-generated `.xlsx` workbook written to disk verbatim (contrast
+`BatchTemplate`, which the CLI builds itself). The only value object is the
+report of what was written:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `output` | `Path` | where the workbook was written (`-o/--output`) |
+| `sample_type` | `str` | the requested type (`"generic"` by default) |
+
+Rules / state:
+- `--sample-type` defaults to `"generic"`; passed through unvalidated (an unknown
+  type surfaces the server's `NotFoundError` → `NOT_FOUND`).
+- The body is binary, so it is never written to a terminal stdout: with no
+  `--output` and a TTY stdout the command fails `USAGE` (FR-044). Under `--json`,
+  the `{output, sample_type}` document is emitted on stdout and the workbook bytes
+  go only to the file.

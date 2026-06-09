@@ -38,4 +38,10 @@
   output modes, and exit-code contract are preserved as testable requirements.
 - The exit-code values (0–5) are retained as a deliberate public contract callers branch on, not as
   an incidental implementation detail.
+- 2026-06-09 update: User Story 5 gained a `samples annotation-template` command (FR-043, FR-044) to
+  download the server's annotation sheet template for the multiplexed upload. An investigation of the
+  Flow API confirmed the annotation sheet (generated Excel, display-name headers, `Type`/`File`
+  columns) is not interchangeable with the batch sample sheet (CLI-built CSV, identifier headers,
+  `reads1`/`reads2` columns), so the two template commands remain separate; this is recorded in the
+  Clarifications and Assumptions. Re-validated — all items still pass.
 - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`.

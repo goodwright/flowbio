@@ -30,6 +30,11 @@ that needs structured, parseable output and stable exit codes to branch on.
 - Q: What happens when `data upload` is run without `--data-type`? → A: `--data-type` is optional; when omitted no data type is sent and the library/server applies its own default/inference
 - Q: Does `upload-batch` upload rows sequentially or concurrently? → A: Sequentially, in sheet row order (one row at a time); "first failure" for `--stop-on-error` means the first failing row in order
 
+### Session 2026-06-09
+
+- Q: Can the annotation sheet downloaded for a multiplexed upload double as the sample sheet for batch upload (Stories 3 & 4)? → A: No. The server's annotation sheet is a generated Excel workbook keyed by metadata-attribute *display names* (with " (Required)" suffixes) and uses a per-sample `File` column plus a `Type` column; the batch sample sheet is a CSV keyed by metadata-attribute *identifiers* with `reads1`/`reads2` columns and no `Type` column (the type is supplied via `--sample-type`). The two are deliberately separate contracts and neither can be fed to the other unchanged, so `annotation-template` and `batch-template` stay distinct commands.
+- Q: Is `--sample-type` required for `annotation-template` the way it is for `batch-template`? → A: No — it is optional and defaults to a generic template, because the annotation endpoint provides a meaningful generic sheet (the base columns common to all sample types), unlike `batch-template` which has no useful type-less form.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Upload a generic data file from the command line (Priority: P1)
@@ -166,28 +171,51 @@ many succeeded, failed, and were skipped.
 
 ---
 
-### User Story 5 - Upload multiplexed reads with an annotation sheet (Priority: P5)
+### User Story 5 - Multiplexed upload with an annotation sheet (Priority: P5)
 
-A user has a multiplexed reads file (optionally paired-end) plus an annotation sheet that the
-backend uses to demultiplex it server-side. They want to submit both in one command and see the
-resulting data identifiers, the annotation identifier, and any warnings the server raised.
+A user wants to upload a multiplexed reads file (optionally paired-end) that the backend
+demultiplexes server-side using an **annotation sheet**. Two steps make this self-service from the
+command line. First, they ask for an annotation sheet template for their sample type and receive a
+correctly-shaped spreadsheet to fill in (one row per demultiplexed sample, mapping each sample to
+its source file and metadata). Then they submit the reads file together with the completed sheet in
+one command and see the resulting data identifiers, the annotation identifier, and any warnings the
+server raised.
+
+The annotation sheet is a distinct artifact from the batch sample sheet of Stories 3 and 4: it is a
+server-generated workbook keyed by metadata-attribute display names with a per-sample `File` column,
+whereas the batch sheet is a CSV the CLI builds itself, keyed by attribute identifiers with
+`reads1`/`reads2` columns. The two are not interchangeable, so `annotation-template` and
+`batch-template` are separate commands (see Assumptions).
 
 **Why this priority**: It completes the upload surface but is the least common manual flow and is
 independent of the others.
 
-**Independent Test**: Run `flowbio samples upload-multiplexed --reads1 r1.fq.gz --annotation
-sheet.csv`; confirm the data identifiers, annotation identifier, and any warnings are reported.
+**Independent Test**: Run `flowbio samples annotation-template --sample-type rna_seq -o sheet.xlsx`
+and confirm a template spreadsheet is written. Fill it in, then run `flowbio samples
+upload-multiplexed --reads1 r1.fq.gz --annotation sheet.xlsx`; confirm the data identifiers,
+annotation identifier, and any warnings are reported.
 
 **Acceptance Scenarios**:
 
-1. **Given** a reads file and an annotation sheet, **When** the user runs `flowbio samples
+1. **Given** a sample type, **When** the user runs `flowbio samples annotation-template
+   --sample-type T -o PATH`, **Then** the server-generated annotation sheet template for `T` (a
+   spreadsheet whose columns include that type's metadata attributes) is written to `PATH`, exit `0`.
+2. **Given** no `--sample-type`, **When** the user runs `flowbio samples annotation-template`,
+   **Then** a generic template covering the base columns common to all sample types is produced
+   (unlike `batch-template`, no `--sample-type` is required).
+3. **Given** the annotation sheet is a binary spreadsheet, **When** the command runs without
+   `-o/--output` and standard output is a terminal, **Then** the command fails with a clear message
+   asking for an output path rather than writing binary to the terminal; **When** `--json` is used,
+   **Then** a single structured document reporting the written path and sample type is printed to
+   standard output and no spreadsheet bytes are placed there.
+4. **Given** a reads file and a completed annotation sheet, **When** the user runs `flowbio samples
    upload-multiplexed`, **Then** the upload is submitted and the resulting identifiers (and any
    warnings) are reported, exit `0`.
-2. **Given** `--reads2`, **When** the command runs, **Then** the reads are treated as paired-end.
-3. **Given** annotation warnings, **When** the default behaviour applies, **Then** warnings are
+5. **Given** `--reads2`, **When** the command runs, **Then** the reads are treated as paired-end.
+6. **Given** annotation warnings, **When** the default behaviour applies, **Then** warnings are
    reported but the upload proceeds; with `--reject-warnings` warnings cause the upload to be
    rejected.
-4. **Given** the annotation sheet fails server validation, **When** the command runs, **Then** the
+7. **Given** the annotation sheet fails server validation, **When** the command runs, **Then** the
    validation errors are surfaced and the exit code reflects "bad request".
 
 ---
@@ -219,7 +247,8 @@ sheet.csv`; confirm the data identifiers, annotation identifier, and any warning
 - **FR-001**: The system MUST provide a single command named `flowbio` with resource-namespaced
   subcommands of the form `flowbio <resource> <verb>`.
 - **FR-002**: The system MUST provide these commands: `data upload`, `samples upload`, `samples
-  batch-template`, `samples upload-batch`, and `samples upload-multiplexed`.
+  batch-template`, `samples upload-batch`, `samples annotation-template`, and `samples
+  upload-multiplexed`.
 - **FR-003**: The system MUST provide help at the top level, per resource group, and per command,
   and MUST return a usage exit code when no resource or no verb is supplied or an unknown one is
   given.
@@ -311,11 +340,26 @@ sheet.csv`; confirm the data identifiers, annotation identifier, and any warning
 - **FR-032**: `samples upload-batch --json` MUST produce a single document containing `uploaded`,
   `failed`, and `skipped` lists and a `counts` summary.
 
+#### `annotation-template`
+
+- **FR-043**: `samples annotation-template` MUST download the server-generated annotation sheet
+  template for a sample type and write it to a file via `-o/--output`. `--sample-type` MUST be
+  optional and default to a generic template (the base columns common to all sample types); a
+  type-specific value MUST yield a template that additionally includes that type's metadata-attribute
+  columns. The CLI MUST NOT pre-validate `--sample-type`; an unknown type surfaces the server's
+  not-found rejection via the not-found exit code.
+- **FR-044**: Because the annotation sheet is a binary spreadsheet, `samples annotation-template`
+  MUST NOT write the spreadsheet to standard output: when no `-o/--output` is given and standard
+  output is an interactive terminal, the command MUST fail with a clear message asking for an output
+  path. Under `--json` the command MUST emit a single structured document (reporting the written path
+  and the sample type) on standard output and MUST NOT place spreadsheet bytes there.
+
 #### `upload-multiplexed`
 
 - **FR-033**: `samples upload-multiplexed` MUST require a first reads file and an annotation sheet,
   accept an optional second reads file, and report the resulting data identifiers, annotation
-  identifier, and any warnings.
+  identifier, and any warnings. The annotation sheet is the one obtained and filled in via
+  `annotation-template` (FR-043).
 - **FR-034**: By default annotation warnings MUST be reported but not block the upload;
   `--reject-warnings` MUST cause warnings to reject the upload.
 
@@ -365,8 +409,11 @@ sheet.csv`; confirm the data identifiers, annotation identifier, and any warning
   values; may permit an additional free-text annotation.
 - **Sample sheet**: A CSV table of demultiplexed samples (one per row) with reserved columns
   (name, reads files, project, organism) and metadata-identifier columns.
-- **Annotation sheet**: A file submitted alongside multiplexed reads that the backend uses to
-  demultiplex them server-side.
+- **Annotation sheet**: A spreadsheet submitted alongside multiplexed reads that the backend uses to
+  demultiplex them server-side, with one row per resulting demultiplexed sample. A correctly-shaped
+  empty template is generated by the server per sample type (keyed by metadata-attribute display
+  names, with a per-sample `File` column and a `Type` column); it is a distinct artifact from the
+  batch **Sample sheet** and is not interchangeable with it.
 - **Credentials**: Either a token (supplied directly, from a file, or from an environment variable)
   or a username/password pair entered interactively.
 
@@ -387,8 +434,8 @@ sheet.csv`; confirm the data identifiers, annotation identifier, and any warning
   run and no samples are uploaded, so they can fix all problems before retrying.
 - **SC-006**: The command can be run on a machine with no prior flowbio install, pinned to an exact
   version, in an ephemeral environment, and works using only its arguments and environment.
-- **SC-007**: All five commands (data upload, single sample, batch template, batch upload,
-  multiplexed upload) are usable end-to-end, each independently demonstrable.
+- **SC-007**: All six commands (data upload, single sample, batch template, batch upload, annotation
+  template, multiplexed upload) are usable end-to-end, each independently demonstrable.
 - **SC-008**: A new user can, from the documentation alone, run every command correctly — including
   authenticating, choosing human vs `--json` output, interpreting an exit code, and authoring a
   valid sample sheet — without reading the source.
@@ -396,9 +443,17 @@ sheet.csv`; confirm the data identifiers, annotation identifier, and any warning
 ## Assumptions
 
 - The underlying library already provides the upload operations the commands wrap (generic data
-  upload, single demultiplexed sample upload, multiplexed upload) and the read-only lookups needed
-  to build templates and validate sheets (metadata attributes, sample types, organisms, projects);
-  the CLI is a presentation layer over them and adds no protocol logic of its own.
+  upload, single demultiplexed sample upload, multiplexed upload), the download of the server's
+  annotation sheet template for a sample type, and the read-only lookups needed to build templates
+  and validate sheets (metadata attributes, sample types, organisms, projects); the CLI is a
+  presentation layer over them and adds no protocol logic of its own.
+- The annotation sheet template and the batch sample sheet are deliberately separate contracts and
+  the former cannot be reused as the latter: the server's annotation sheet is a generated workbook
+  keyed by metadata-attribute display names (with " (Required)" cues) carrying `Type`, `File`,
+  `Organism`, and `PubMed ID` columns, whereas the batch sample sheet is a CLI-built CSV keyed by
+  attribute identifiers carrying `reads1`/`reads2` columns and no `Type` column. `annotation-template`
+  therefore downloads the server artifact as-is (an Excel workbook) while `batch-template` keeps
+  emitting its own CSV; neither feeds the other unchanged.
 - Whether a metadata attribute permits a free-text annotation is information the CLI can obtain from
   the library; exposing that fact is a small additive prerequisite for the template command and is
   the only library change this feature depends on.
@@ -408,5 +463,6 @@ sheet.csv`; confirm the data identifiers, annotation identifier, and any warning
 - The backend remains the source of truth for validation; the CLI's pre-flight checks are a
   friendly early filter, not a replacement for server-side validation.
 - Out of scope for this feature: non-sequencing single-sample uploads with arbitrary data keys;
-  Excel sample sheets; reusing the server's downloaded annotation-sheet headers for the batch sheet;
-  read-only discovery commands; and persisting a token after a username/password login.
+  Excel *batch* sample sheets (the annotation sheet remains Excel because the server generates it
+  that way); translating the annotation sheet into the batch sheet or vice versa; read-only
+  discovery commands; and persisting a token after a username/password login.
