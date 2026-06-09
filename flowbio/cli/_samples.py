@@ -128,6 +128,7 @@ def _configure_annotation_template(annotation_template: argparse.ArgumentParser)
         "--output",
         required=True,
         metavar="PATH",
+        type=Path,
         help="File to write the .xlsx workbook to (the template is binary).",
     )
 
@@ -140,17 +141,20 @@ def _configure_upload_multiplexed(upload_multiplexed: argparse.ArgumentParser) -
         "--reads1",
         required=True,
         metavar="PATH",
+        type=Path,
         help="First multiplexed reads file.",
     )
     upload_multiplexed.add_argument(
         "--reads2",
         metavar="PATH",
+        type=Path,
         help="Second multiplexed reads file (makes the upload paired-end).",
     )
     upload_multiplexed.add_argument(
         "--annotation",
         required=True,
         metavar="PATH",
+        type=Path,
         help="Completed annotation sheet (obtained via `annotation-template`).",
     )
     upload_multiplexed.add_argument(
@@ -212,7 +216,7 @@ def _annotation_template_command(
     :param output: The result/error renderer.
     :returns: :attr:`ExitCode.SUCCESS` on success.
     """
-    destination = Path(args.output)
+    destination = args.output
     template = client.samples.get_annotation_template(args.sample_type)
     try:
         destination.write_bytes(template)
@@ -241,12 +245,12 @@ def _upload_multiplexed_command(
     :param output: The result/error renderer.
     :returns: :attr:`ExitCode.SUCCESS` on success.
     """
-    reads = {"reads1": existing_file(Path(args.reads1))}
+    reads = {"reads1": existing_file(args.reads1)}
     if args.reads2 is not None:
-        reads["reads2"] = existing_file(Path(args.reads2))
+        reads["reads2"] = existing_file(args.reads2)
     upload = client.samples.upload_multiplexed_data(
         reads=reads,
-        annotation=existing_file(Path(args.annotation)),
+        annotation=existing_file(args.annotation),
         ignore_warnings=not args.reject_warnings,
     )
     if upload.warnings:
