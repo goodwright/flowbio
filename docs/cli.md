@@ -148,3 +148,78 @@ $ flowbio samples upload --name liver_r1 --sample-type rna_seq \
     --reads1 ./liver_R1.fastq.gz --json
 {"id": "samp_abc"}
 ```
+
+### `samples annotation-template`
+
+Download the server-generated annotation sheet template for a sample type, to
+fill in before `samples upload-multiplexed`.
+
+```
+flowbio samples annotation-template [--sample-type TYPE] [-o PATH | --output PATH]
+```
+
+The template is an Excel workbook (`.xlsx`) keyed by metadata-attribute display
+names. It is a **different artefact from the batch sample sheet** (the CLI-built
+CSV used by `upload-batch`) and the two are not interchangeable. `--sample-type`
+is optional and defaults to `generic` (the base columns shared by all types); a
+type-specific value adds that type's metadata columns. It is sent as-is and
+validated server-side.
+
+Because the body is binary, the CLI never writes it where it would clash: pass
+`-o/--output PATH` when stdout is an interactive terminal or under `--json` (the
+single JSON document owns stdout). In either case, omitting `-o` fails with exit
+`2` asking for an output path. With a non-terminal stdout in human mode, omitting
+`-o` streams the workbook to stdout (e.g. `… > sheet.xlsx`).
+
+**Output** — human: the workbook is written to `--output`; a confirmation (path
+and sample type) goes to stderr, leaving stdout empty. `--json`:
+`{"output": "<path>", "sample_type": "<type>"}` on stdout — never the spreadsheet
+bytes.
+
+**Exit codes** — `0` success; `2` no `--output` while stdout is a terminal or
+under `--json`; `4` unknown sample type; `3` authentication failure; otherwise
+the standard mapping above.
+
+**Example**
+
+```bash
+$ flowbio samples annotation-template --sample-type rna_seq -o sheet.xlsx
+Wrote rna_seq annotation template to sheet.xlsx
+
+$ flowbio samples annotation-template --sample-type rna_seq -o sheet.xlsx --json
+{"output": "sheet.xlsx", "sample_type": "rna_seq"}
+```
+
+### `samples upload-multiplexed`
+
+Upload multiplexed reads plus a completed annotation sheet for server-side
+demultiplexing — single-ended (`--reads1`) or paired-end (add `--reads2`).
+
+```
+flowbio samples upload-multiplexed --reads1 PATH --annotation PATH
+    [--reads2 PATH] [--reject-warnings]
+```
+
+The annotation sheet is the filled-in workbook from `annotation-template`. By
+default annotation warnings are reported but the upload proceeds;
+`--reject-warnings` makes warnings reject it.
+
+**Output** — human: a confirmation line with the data identifiers and annotation
+identifier on stdout, with any warnings on stderr. `--json`:
+`{"data_ids": [...], "annotation_id": "<id>", "warnings": [...]}` on stdout.
+
+**Exit codes** — `0` success (including with reported warnings); `5` annotation
+fails server validation, or warnings with `--reject-warnings`; `3` authentication
+failure; otherwise the standard mapping above.
+
+**Example**
+
+```bash
+$ flowbio samples upload-multiplexed --reads1 ./mux_R1.fastq.gz \
+    --annotation ./sheet.xlsx
+Uploaded multiplexed data mux_1 with annotation ann_1
+
+$ flowbio samples upload-multiplexed --reads1 ./mux_R1.fastq.gz \
+    --annotation ./sheet.xlsx --json
+{"data_ids": ["mux_1"], "annotation_id": "ann_1", "warnings": []}
+```
