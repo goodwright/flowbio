@@ -118,7 +118,7 @@ Single-project layout (per plan.md): CLI under `flowbio/cli/` (every module `_`-
 
 ### Tests for User Story 5 (MANDATORY — write first) ⚠️
 
-- [X] T020 [P] [US5] Write failing tests in `tests/unit/cli/test_samples.py` covering `annotation-template` (US5 scenarios 1–3): writes the server-generated `.xlsx` bytes verbatim to `-o/--output` with a confirmation (path, sample type) on stderr (exit 0); `--sample-type` optional, defaults to `"generic"`; no `-o` with a TTY stdout → exit 2 asking for an output path; `--json` emits a single `{"output", "sample_type"}` document on stdout with no spreadsheet bytes there; unknown `--sample-type` (server not-found) → exit 4 (contracts/samples-annotation-template.md)
+- [X] T020 [P] [US5] Write failing tests in `tests/unit/cli/test_samples.py` covering `annotation-template` (US5 scenarios 1–3): writes the server-generated `.xlsx` bytes verbatim to `-o/--output` with a confirmation (path, sample type) on stderr (exit 0); `--sample-type` optional, defaults to `"generic"`; `-o/--output` required → exit 2 when omitted or unwritable; `--json` emits a single `{"output", "sample_type"}` document on stdout with no spreadsheet bytes there; unknown `--sample-type` (server not-found) → exit 4 (contracts/samples-annotation-template.md)
 - [X] T022 [P] [US5] Write failing tests in `tests/unit/cli/test_samples.py` covering `upload-multiplexed` (US5 scenarios 4–7): submit + report `data_ids`/`annotation_id`/`warnings` (exit 0); `--reads2` → paired-end; warnings reported but upload proceeds by default (`ignore_warnings=True`), `--reject-warnings` rejects → exit 5; annotation fails server validation → exit 5 (contracts/samples-upload-multiplexed.md)
 
 ### Implementation for User Story 5

@@ -165,20 +165,18 @@ is optional and defaults to `generic` (the base columns shared by all types); a
 type-specific value adds that type's metadata columns. It is sent as-is and
 validated server-side.
 
-Because the body is binary, the CLI never writes it where it would clash: pass
-`-o/--output PATH` when stdout is an interactive terminal or under `--json` (the
-single JSON document owns stdout). In either case, omitting `-o` fails with exit
-`2` asking for an output path. With a non-terminal stdout in human mode, omitting
-`-o` streams the workbook to stdout (e.g. `… > sheet.xlsx`).
+The body is a binary workbook, so `-o/--output PATH` is **required** — it is
+never written to stdout (which carries human result lines or the single JSON
+document).
 
 **Output** — human: the workbook is written to `--output`; a confirmation (path
 and sample type) goes to stderr, leaving stdout empty. `--json`:
 `{"output": "<path>", "sample_type": "<type>"}` on stdout — never the spreadsheet
 bytes.
 
-**Exit codes** — `0` success; `2` no `--output` while stdout is a terminal or
-under `--json`; `4` unknown sample type; `3` authentication failure; otherwise
-the standard mapping above.
+**Exit codes** — `0` success; `2` no `--output`, or an unwritable output path;
+`4` unknown sample type; `3` authentication failure; otherwise the standard
+mapping above.
 
 **Example**
 
