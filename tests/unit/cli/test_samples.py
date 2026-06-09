@@ -438,10 +438,11 @@ class TestSamplesUploadMultiplexed:
     def test_annotation_validation_failure_rejects_upload(
         self, run_cli, tmp_path: Path,
     ) -> None:
+        detail = "Invalid scientist"
         respx.post(ANNOTATION_UPLOAD_URL).mock(
             return_value=httpx.Response(
                 HTTPStatus.BAD_REQUEST,
-                json={"validation": [{"row": 1, "message": "Invalid scientist"}]},
+                json={"validation": [{"row": 1, "message": detail}]},
             ),
         )
         multiplexed = _mock_multiplexed()
@@ -455,3 +456,26 @@ class TestSamplesUploadMultiplexed:
 
         assert result.exit_code == 5
         assert multiplexed.call_count == 0
+        assert f"row 1: {detail}" in result.stderr
+
+    @respx.mock
+    def test_annotation_validation_errors_in_json_error_document(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        errors = [{"row": 1, "message": "Invalid scientist"}]
+        respx.post(ANNOTATION_UPLOAD_URL).mock(
+            return_value=httpx.Response(
+                HTTPStatus.BAD_REQUEST, json={"validation": errors},
+            ),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "upload-multiplexed",
+            "--reads1", str(_reads(tmp_path, "r1.fq.gz")),
+            "--annotation", str(_annotation(tmp_path)),
+            "--no-progress", "--json",
+        )
+
+        assert result.exit_code == 5
+        assert result.stdout == ""
+        assert json.loads(result.stderr)["errors"] == errors

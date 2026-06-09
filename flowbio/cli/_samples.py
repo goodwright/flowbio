@@ -13,7 +13,7 @@ from pathlib import Path
 
 from flowbio.cli._exit_codes import CliUsageError, ExitCode
 from flowbio.cli._files import existing_file
-from flowbio.cli._output import Output
+from flowbio.cli._output import Output, format_issue
 from flowbio.v2.client import Client
 
 
@@ -220,7 +220,7 @@ def _upload_multiplexed_command(
     if upload.warnings:
         output.emit_advisory("Annotation warnings:")
         for warning in upload.warnings:
-            output.emit_advisory(f"  {_format_warning(warning)}")
+            output.emit_advisory(f"  {format_issue(warning)}")
     output.emit_result(
         f"Uploaded multiplexed data {', '.join(upload.data_ids)} "
         f"with annotation {upload.annotation_id}",
@@ -231,14 +231,6 @@ def _upload_multiplexed_command(
         },
     )
     return ExitCode.SUCCESS
-
-
-def _format_warning(warning: dict) -> str:
-    if "message" not in warning:
-        return str(warning)
-    row = warning.get("row")
-    prefix = f"row {row}: " if row is not None else ""
-    return f"{prefix}{warning['message']}"
 
 
 def _merge_metadata(
