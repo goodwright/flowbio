@@ -21,7 +21,7 @@ from flowbio.cli._parser import build_parser
 from flowbio.cli._progress import progress_config
 from flowbio.cli._types import BaseUrl, Token
 from flowbio.v2.client import Client
-from flowbio.v2.exceptions import FlowApiError
+from flowbio.v2.exceptions import AnnotationValidationError, FlowApiError
 
 # A handler runs one command against an authenticated client and returns the
 # process exit code. Errors are raised (not returned) and mapped centrally.
@@ -88,7 +88,10 @@ def _dispatch(args: argparse.Namespace) -> int:
         output.emit_error(str(error))
         return int(ExitCode.USAGE)
     except FlowApiError as error:
-        output.emit_error(error.message, status_code=error.status_code)
+        details = error.errors if isinstance(error, AnnotationValidationError) else None
+        output.emit_error(
+            error.message, status_code=error.status_code, details=details,
+        )
         return int(exit_code_for(error))
 
 

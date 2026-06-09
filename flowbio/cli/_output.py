@@ -53,18 +53,43 @@ class Output:
         if not self.json_mode:
             print(message, file=self.stderr)
 
-    def emit_error(self, message: JsonValue, status_code: int | None = None) -> None:
+    def emit_error(
+        self,
+        message: JsonValue,
+        status_code: int | None = None,
+        details: list[JsonValue] | None = None,
+    ) -> None:
         """Emit an error to stderr.
 
         :param message: The error message — a string, or a structured value
             (e.g. the library's field-level error dict) preserved as-is in JSON.
         :param status_code: The HTTP status code, when the error came from the
             server. Included in the JSON document where present.
+        :param details: Per-item detail behind a summary message (e.g. the
+            individual annotation validation errors). Listed under ``errors`` in
+            ``--json`` mode and one per line in human mode.
         """
         if self.json_mode:
             document: dict[str, JsonValue] = {"message": message}
             if status_code is not None:
                 document["status_code"] = int(status_code)
+            if details:
+                document["errors"] = details
             print(json.dumps(document), file=self.stderr)
         else:
             print(f"Error: {message}", file=self.stderr)
+            for detail in details or []:
+                print(f"  {format_issue(detail)}", file=self.stderr)
+
+
+def format_issue(issue: JsonValue) -> str:
+    """Render a Flow ``{row, message}`` issue dict as a readable line.
+
+    Falls back to ``str`` for any other shape so unexpected payloads still
+    surface intact.
+    """
+    if isinstance(issue, dict) and "message" in issue:
+        row = issue.get("row")
+        prefix = f"row {row}: " if row is not None else ""
+        return f"{prefix}{issue['message']}"
+    return str(issue)
