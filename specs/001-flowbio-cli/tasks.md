@@ -139,14 +139,14 @@ Single-project layout (per plan.md): CLI under `flowbio/cli/` (every module `_`-
 
 ### Tests for User Story 3 (MANDATORY — write first) ⚠️
 
-- [ ] T025 [P] [US3] Write a failing test in `tests/unit/v2/test_samples.py` for the additive `MetadataAttribute.allows_annotation` field: defaults to `False` when the payload omits the key, and is populated from the `/samples/metadata` response (data-model.md §MetadataAttribute, FR-019/FR-024)
-- [ ] T027 [P] [US3] Write failing tests in `tests/unit/cli/test_samples.py` covering US3 scenarios 1–6: CSV header of reserved columns (`name,reads1,reads2,project,organism`) then one column per metadata attribute, with `<id>__annotation` after each annotation-enabled attribute, and no `sample_type` column; required/optional summary on stderr without `--json`; `-o/--output PATH` writes to file; `--json` per-column descriptor list (name, kind, required, options, description) with no CSV; missing `--sample-type` → exit 2 (contracts/samples-batch-template.md)
+- [X] T025 [P] [US3] Write a failing test in `tests/unit/v2/test_samples.py` for the additive `MetadataAttribute.allow_annotation` field: defaults to `False` when the payload omits the key, and is populated from the `/samples/metadata` response (data-model.md §MetadataAttribute, FR-019/FR-024)
+- [X] T027 [P] [US3] Write failing tests in `tests/unit/cli/test_samples.py` covering US3 scenarios 1–6: CSV header of reserved columns (`name,reads1,reads2,project,organism`) then one column per metadata attribute, with `<id>__annotation` after each annotation-enabled attribute, and no `sample_type` column; required/optional summary on stderr without `--json`; `-o/--output PATH` writes to file; `--json` per-column descriptor list (name, kind, required, options, description) with no CSV; missing `--sample-type` → exit 2 (contracts/samples-batch-template.md)
 
 ### Implementation for User Story 3
 
-- [ ] T026 [US3] Implement the additive `allows_annotation: bool = False` field on `MetadataAttribute` and populate it in `_create_metadata_attribute` in `flowbio/v2/samples.py` (additive, backwards-compatible — the feature's only library change) (depends on T025)
-- [ ] T028 [US3] Implement the `batch-template` handler and `BatchTemplate` descriptor in `flowbio/cli/_samples.py` (column ordering, `required` derived from `required` OR chosen type in `required_for_sample_types`, `--json` descriptors, `-o/--output` writing, summary to stderr) sourced from `client.samples.get_metadata_attributes()`, and register the subcommand via the `register()` in `flowbio/cli/_samples.py` (wired into `flowbio/cli/_parser.py`) with `help=`/description text on every argument (FR-003, SC-008) (FR-024, FR-025, FR-026)
-- [ ] T029 [US3] Document `batch-template` and the sample-sheet schema (reserved columns, metadata-identifier columns, annotation companions) in `docs/cli.md` (FR-041, FR-042)
+- [X] T026 [US3] Implement the additive `allow_annotation: bool = False` field on `MetadataAttribute` and populate it in `_create_metadata_attribute` in `flowbio/v2/samples.py` (additive, backwards-compatible — the feature's only library change) (depends on T025)
+- [X] T028 [US3] Implement the `batch-template` handler and `BatchTemplate` descriptor in `flowbio/cli/_samples.py` (column ordering, `required` derived from `required` OR chosen type in `required_for_sample_types`, `--json` descriptors, `-o/--output` writing, summary to stderr) sourced from `client.samples.get_metadata_attributes()`, and register the subcommand via the `register()` in `flowbio/cli/_samples.py` (wired into `flowbio/cli/_parser.py`) with `help=`/description text on every argument (FR-003, SC-008) (FR-024, FR-025, FR-026)
+- [X] T029 [US3] Document `batch-template` and the sample-sheet schema (reserved columns, metadata-identifier columns, annotation companions) in `docs/cli.md` (FR-041, FR-042)
 
 **Checkpoint**: Template generation works independently and defines the contract consumed by batch upload.
 
@@ -165,7 +165,7 @@ Single-project layout (per plan.md): CLI under `flowbio/cli/` (every module `_`-
 
 ### Implementation for User Story 4
 
-- [ ] T031 [US4] Implement `flowbio/cli/_sheet.py`: `SampleSheet`/`SheetRow` CSV parsing, relative-path resolution, empty-cell omission, the FR-028 per-row pre-flight validation collecting all errors (using `MetadataAttribute.allows_annotation` from T026), and the non-CSV → USAGE rejection (depends on T030, T026)
+- [ ] T031 [US4] Implement `flowbio/cli/_sheet.py`: `SampleSheet`/`SheetRow` CSV parsing, relative-path resolution, empty-cell omission, the FR-028 per-row pre-flight validation collecting all errors (using `MetadataAttribute.allow_annotation` from T026), and the non-CSV → USAGE rejection (depends on T030, T026)
 - [ ] T033 [US4] Implement the `upload-batch` handler and `BatchResult` in `flowbio/cli/_samples.py` (parse + validate all rows before any upload; `--skip-invalid`; sequential upload reusing the T018 single-sample path; default-continue vs `--stop-on-error`; exit code: all uploaded→0, pre-flight invalid without `--skip-invalid`→2, any upload failure→1) and register the subcommand via the `register()` in `flowbio/cli/_samples.py` (wired into `flowbio/cli/_parser.py`) with `help=`/description text on every argument (FR-003, SC-008) (FR-027…FR-032)
 - [ ] T034 [US4] Document `upload-batch` (validation behaviour, `--skip-invalid`/`--stop-on-error`, `--json` shape, worked example) in `docs/cli.md` (FR-041, FR-042)
 
@@ -198,8 +198,8 @@ Single-project layout (per plan.md): CLI under `flowbio/cli/` (every module `_`-
 - **US1 (P1)**: Foundational only — first runnable command (validates the foundation).
 - **US2 (P2)**: Foundational only. Adds the metadata-parsing + single-sample path.
 - **US5 (P5)**: Foundational only. Wraps the **existing** `get_annotation_template` and `upload_multiplexed_data` methods — no library change. Independent of the other sample commands, hence sequenced before US3/US4.
-- **US3 (P3)**: Foundational + the additive `MetadataAttribute.allows_annotation` field (T025/T026). Independent of US1/US2/US5.
-- **US4 (P4)**: Reuses the US2 single-sample upload path (T018) and the US3 sheet contract + `allows_annotation` field (T026); needs `_sheet.py`. Strongest cross-story coupling — sequenced last.
+- **US3 (P3)**: Foundational + the additive `MetadataAttribute.allow_annotation` field (T025/T026). Independent of US1/US2/US5.
+- **US4 (P4)**: Reuses the US2 single-sample upload path (T018) and the US3 sheet contract + `allow_annotation` field (T026); needs `_sheet.py`. Strongest cross-story coupling — sequenced last.
 
 ### Within Each User Story
 
@@ -244,7 +244,7 @@ Task T011: "Implement flowbio/cli/_progress.py"
 
 ### Incremental Delivery
 
-Foundation → US1 (MVP) → US2 → US5 → US3 → US4 → Polish. US5 is sequenced ahead of US3/US4 because it is independent and needs no library change; US3 (and the additive `allows_annotation` field) precedes US4, which reuses both the single-sample path and the sheet contract. Each story is independently testable and adds value without breaking earlier ones.
+Foundation → US1 (MVP) → US2 → US5 → US3 → US4 → Polish. US5 is sequenced ahead of US3/US4 because it is independent and needs no library change; US3 (and the additive `allow_annotation` field) precedes US4, which reuses both the single-sample path and the sheet contract. Each story is independently testable and adds value without breaking earlier ones.
 
 ---
 

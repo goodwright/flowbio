@@ -221,3 +221,52 @@ $ flowbio samples upload-multiplexed --reads1 ./mux_R1.fastq.gz \
     --annotation ./sheet.xlsx --json
 {"data_ids": ["mux_1"], "annotation_id": "ann_1", "warnings": []}
 ```
+
+### `samples batch-template`
+
+Emit a sample-sheet template for a sample type, to fill in and feed to
+`samples upload-batch`.
+
+```
+flowbio samples batch-template --sample-type TYPE [-o PATH | --output PATH]
+```
+
+Run `flowbio samples batch-template --help` for the full option list. The sample
+type decides which metadata columns are marked required; it is **not** validated
+here (see exit codes below) — an unrecognised type simply yields a template with
+nothing flagged required-for-that-type.
+
+**Sample-sheet schema** — the columns, in order:
+
+- The reserved columns `name`, `reads1`, `reads2`, `project`, `organism`
+  (`name` and `reads1` are always required; `reads1`/`reads2` are reads file
+  paths).
+- One column per metadata attribute, keyed by its **identifier**. An attribute is
+  required when it is globally required or required for the chosen sample type.
+- A `<identifier>__annotation` companion column immediately after each attribute
+  that permits a free-text annotation.
+
+There is **no** `sample_type` column — the type is supplied via `--sample-type`
+to both this command and `upload-batch`. This CSV is distinct from the annotation
+sheet produced by `samples annotation-template`.
+
+**Output** — human: the CSV header row on stdout (or written to `--output`), plus
+a summary of required-vs-optional columns on stderr. `--json`: a per-column
+descriptor list on stdout (`name`, `kind` of `reserved`/`metadata`/`annotation`,
+`required`, closed-value `options` or `null`, and `description`) and **no CSV** —
+so an agent can build rows directly.
+
+**Exit codes** — `0` success; `2` missing `--sample-type`; `3` authentication
+failure; otherwise the standard mapping above. The sample type is not checked
+against the server here, so an unknown type still exits `0`; the type is
+validated when you run `samples upload-batch`.
+
+**Example**
+
+```bash
+$ flowbio samples batch-template --sample-type rna_seq
+name,reads1,reads2,project,organism,cell_type,source,source__annotation
+
+$ flowbio samples batch-template --sample-type rna_seq --json
+[{"name": "name", "kind": "reserved", "required": true, "options": null, "description": "..."}, ...]
+```

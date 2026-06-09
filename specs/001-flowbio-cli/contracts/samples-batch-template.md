@@ -24,7 +24,7 @@ then one column per metadata attribute, each followed by a
 **no** `sample_type` column.
 
 Data sourced from `client.samples.get_metadata_attributes()` (and its
-`allows_annotation`, `options`, `required`, `required_for_sample_types`).
+`allow_annotation`, `options`, `required`, `required_for_sample_types`).
 
 ## Output
 

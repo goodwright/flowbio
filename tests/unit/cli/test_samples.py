@@ -479,3 +479,146 @@ class TestSamplesUploadMultiplexed:
         assert result.exit_code == 5
         assert result.stdout == ""
         assert json.loads(result.stderr)["errors"] == errors
+
+
+METADATA_URL = f"{DEFAULT_BASE_URL}/samples/metadata"
+RESERVED_HEADER = "name,reads1,reads2,project,organism"
+
+
+def _mock_metadata() -> None:
+    respx.get(METADATA_URL).mock(
+        return_value=httpx.Response(HTTPStatus.OK, json=[
+            {
+                "identifier": "cell_type",
+                "name": "Cell Type",
+                "description": "The cell type",
+                "required": False,
+                "required_for_public": False,
+                "all_sample_types": False,
+                "allow_user_terms": False,
+                "regex_validator": None,
+                "has_options": True,
+                "allow_annotation": False,
+                "sample_type_links": [
+                    {"sample_type_identifier": "rna_seq", "required": True},
+                ],
+            },
+            {
+                "identifier": "source",
+                "name": "Source",
+                "description": "Sample source",
+                "required": False,
+                "required_for_public": False,
+                "all_sample_types": True,
+                "allow_user_terms": False,
+                "regex_validator": None,
+                "has_options": False,
+                "allow_annotation": True,
+                "sample_type_links": [],
+            },
+        ]),
+    )
+    respx.get(f"{METADATA_URL}/cell_type/options").mock(
+        return_value=httpx.Response(
+            HTTPStatus.OK,
+            json={"options": [{"value": "Neuron"}, {"value": "Fibroblast"}]},
+        ),
+    )
+
+
+class TestSamplesBatchTemplate:
+
+    @respx.mock
+    def test_csv_header_orders_reserved_then_metadata_with_annotation_companion(
+        self, run_cli,
+    ) -> None:
+        _mock_metadata()
+
+        result = run_cli(
+            "samples", "batch-template", "--sample-type", "rna_seq",
+            "--token", TOKEN,
+        )
+
+        assert result.exit_code == 0
+        assert result.stdout.strip() == (
+            f"{RESERVED_HEADER},cell_type,source,source__annotation"
+        )
+        assert "sample_type" not in result.stdout
+
+    @respx.mock
+    def test_summary_of_required_columns_on_stderr_without_json(
+        self, run_cli,
+    ) -> None:
+        _mock_metadata()
+
+        result = run_cli(
+            "samples", "batch-template", "--sample-type", "rna_seq",
+            "--token", TOKEN,
+        )
+
+        assert "cell_type" in result.stderr
+        assert "source" in result.stderr
+
+    @respx.mock
+    def test_output_flag_writes_csv_to_file(self, run_cli, tmp_path: Path) -> None:
+        _mock_metadata()
+        destination = tmp_path / "template.csv"
+
+        result = run_cli(
+            "samples", "batch-template", "--sample-type", "rna_seq",
+            "-o", str(destination), "--token", TOKEN,
+        )
+
+        assert result.exit_code == 0
+        assert destination.read_text().splitlines()[0] == (
+            f"{RESERVED_HEADER},cell_type,source,source__annotation"
+        )
+        assert "cell_type" not in result.stdout
+
+    @respx.mock
+    def test_json_emits_column_descriptors_and_no_csv(self, run_cli) -> None:
+        _mock_metadata()
+
+        result = run_cli(
+            "samples", "batch-template", "--sample-type", "rna_seq",
+            "--json", "--token", TOKEN,
+        )
+
+        assert result.exit_code == 0
+        descriptors = json.loads(result.stdout)
+        assert result.stdout.count("\n") == 1
+        by_name = {column["name"]: column for column in descriptors}
+        assert by_name["name"]["kind"] == "reserved"
+        assert by_name["name"]["required"] is True
+        assert by_name["cell_type"]["kind"] == "metadata"
+        assert by_name["cell_type"]["required"] is True
+        assert by_name["cell_type"]["options"] == ["Neuron", "Fibroblast"]
+        assert by_name["source__annotation"]["kind"] == "annotation"
+        assert by_name["source"]["required"] is False
+        assert "sample_type" not in by_name
+
+    @respx.mock
+    def test_json_with_output_writes_csv_file_and_emits_descriptors(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        _mock_metadata()
+        destination = tmp_path / "template.csv"
+
+        result = run_cli(
+            "samples", "batch-template", "--sample-type", "rna_seq",
+            "--json", "-o", str(destination), "--token", TOKEN,
+        )
+
+        assert result.exit_code == 0
+        assert destination.read_text().splitlines()[0] == (
+            f"{RESERVED_HEADER},cell_type,source,source__annotation"
+        )
+        descriptors = json.loads(result.stdout)
+        assert [column["name"] for column in descriptors][:5] == [
+            "name", "reads1", "reads2", "project", "organism",
+        ]
+
+    def test_missing_sample_type_is_usage_error(self, run_cli) -> None:
+        result = run_cli("samples", "batch-template", "--token", TOKEN)
+
+        assert result.exit_code == 2
