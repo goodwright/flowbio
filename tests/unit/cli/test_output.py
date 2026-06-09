@@ -3,7 +3,7 @@ import json
 from http import HTTPStatus
 
 from flowbio.cli._exit_codes import CliUsageError, ExitCode, exit_code_for
-from flowbio.cli._output import Output
+from flowbio.cli._output import Output, format_issue
 from flowbio.v2.exceptions import (
     AnnotationValidationError,
     AuthenticationError,
@@ -88,6 +88,25 @@ class TestHumanOutput:
         assert out.getvalue() == ""
         assert message in err.getvalue()
 
+    def test_error_renders_details_one_per_line_after_summary(self) -> None:
+        out, err = io.StringIO(), io.StringIO()
+        output = Output(json_mode=False, stdout=out, stderr=err)
+
+        output.emit_error(
+            "Annotation has 2 validation error(s)",
+            status_code=HTTPStatus.BAD_REQUEST,
+            details=[
+                {"row": 1, "message": "Invalid scientist"},
+                {"row": 3, "message": "Unknown organism"},
+            ],
+        )
+
+        lines = err.getvalue().splitlines()
+        assert lines[0] == "Error: Annotation has 2 validation error(s)"
+        assert "row 1: Invalid scientist" in lines[1]
+        assert "row 3: Unknown organism" in lines[2]
+        assert out.getvalue() == ""
+
 
 class TestJsonOutput:
 
@@ -131,3 +150,32 @@ class TestJsonOutput:
         output.emit_error(message)
 
         assert json.loads(err.getvalue()) == {"message": message}
+
+    def test_error_includes_details_under_errors_key(self) -> None:
+        message = "Annotation has 1 validation error(s)"
+        errors = [{"row": 1, "message": "Invalid scientist"}]
+        out, err = io.StringIO(), io.StringIO()
+        output = Output(json_mode=True, stdout=out, stderr=err)
+
+        output.emit_error(message, status_code=HTTPStatus.BAD_REQUEST, details=errors)
+
+        assert json.loads(err.getvalue()) == {
+            "message": message,
+            "status_code": int(HTTPStatus.BAD_REQUEST),
+            "errors": errors,
+        }
+        assert out.getvalue() == ""
+
+
+class TestFormatIssue:
+
+    def test_formats_row_and_message(self) -> None:
+        assert format_issue({"row": 1, "message": "bad"}) == "row 1: bad"
+
+    def test_message_without_row_has_no_prefix(self) -> None:
+        assert format_issue({"message": "bad"}) == "bad"
+
+    def test_falls_back_to_str_for_other_shapes(self) -> None:
+        issue = {"code": "E123"}
+
+        assert format_issue(issue) == str(issue)
