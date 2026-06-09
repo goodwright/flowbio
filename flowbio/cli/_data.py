@@ -30,6 +30,7 @@ def register(
     upload.add_argument(
         "path",
         metavar="PATH",
+        type=Path,
         help="Local file to upload.",
     )
     upload.add_argument(
@@ -58,7 +59,7 @@ def _upload_command(args: argparse.Namespace, client: Client, output: Output) ->
     :returns: :attr:`ExitCode.SUCCESS` on success.
     """
     data = client.data.upload_data(
-        existing_file(Path(args.path)),
+        existing_file(args.path),
         filename=args.filename,
         data_type=args.data_type,
         is_directory=args.directory,

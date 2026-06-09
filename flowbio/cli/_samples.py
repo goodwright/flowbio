@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from flowbio.cli._exit_codes import CliUsageError, ExitCode
 from flowbio.cli._files import existing_file
 from flowbio.cli._output import Output, format_issue
+from flowbio.cli._types import JsonValue
 from flowbio.v2.client import Client
+from flowbio.v2.samples import MetadataAttribute
 
 
 def register(
@@ -46,6 +49,15 @@ def register(
             "server-side demultiplexing."
         ),
     ))
+    _configure_batch_template(verbs.add_parser(
+        "batch-template",
+        parents=[global_parent],
+        help="Emit a sample-sheet template for a sample type.",
+        description=(
+            "Emit a CSV sample-sheet header (or a per-column descriptor under "
+            "--json) for use with 'samples upload-batch'."
+        ),
+    ))
 
 
 def _configure_upload(upload: argparse.ArgumentParser) -> None:
@@ -66,11 +78,13 @@ def _configure_upload(upload: argparse.ArgumentParser) -> None:
         "--reads1",
         required=True,
         metavar="PATH",
+        type=Path,
         help="First reads file.",
     )
     upload.add_argument(
         "--reads2",
         metavar="PATH",
+        type=Path,
         help="Second reads file (makes the sample paired-end).",
     )
     upload.add_argument(
@@ -146,6 +160,24 @@ def _configure_upload_multiplexed(upload_multiplexed: argparse.ArgumentParser) -
     )
 
 
+def _configure_batch_template(batch_template: argparse.ArgumentParser) -> None:
+    batch_template.set_defaults(
+        command_parser=batch_template, handler=_batch_template_command,
+    )
+    batch_template.add_argument(
+        "--sample-type",
+        required=True,
+        metavar="TYPE",
+        help="Sample type the template is built for (decides required columns).",
+    )
+    batch_template.add_argument(
+        "-o", "--output",
+        metavar="PATH",
+        type=Path,
+        help="Write the CSV template to this file instead of stdout.",
+    )
+
+
 def _upload_command(args: argparse.Namespace, client: Client, output: Output) -> ExitCode:
     """Upload a single sample and report its identifier.
 
@@ -155,9 +187,9 @@ def _upload_command(args: argparse.Namespace, client: Client, output: Output) ->
     :returns: :attr:`ExitCode.SUCCESS` on success.
     """
     metadata = _merge_metadata(args.metadata, args.metadata_json)
-    data = {"reads1": existing_file(Path(args.reads1))}
+    data = {"reads1": existing_file(args.reads1)}
     if args.reads2 is not None:
-        data["reads2"] = existing_file(Path(args.reads2))
+        data["reads2"] = existing_file(args.reads2)
     sample = client.samples.upload_sample(
         name=args.name,
         sample_type=args.sample_type,
@@ -231,6 +263,101 @@ def _upload_multiplexed_command(
         },
     )
     return ExitCode.SUCCESS
+
+
+@dataclass(frozen=True)
+class _TemplateColumn:
+    """One column of a sample-sheet template, in CSV order."""
+
+    name: str
+    kind: str
+    required: bool
+    options: list[str] | None
+    description: str
+
+    @property
+    def descriptor(self) -> dict[str, JsonValue]:
+        return {
+            "name": self.name,
+            "kind": self.kind,
+            "required": self.required,
+            "options": self.options,
+            "description": self.description,
+        }
+
+
+_RESERVED_COLUMNS = (
+    ("name", True, "Unique sample name (no spaces)."),
+    ("reads1", True, "Path to the first reads file."),
+    ("reads2", False, "Path to the second reads file (paired-end)."),
+    ("project", False, "Project identifier to assign the sample to."),
+    ("organism", False, "Organism identifier to associate with the sample."),
+)
+
+
+def _batch_template_command(
+    args: argparse.Namespace, client: Client, output: Output,
+) -> ExitCode:
+    """Emit a sample-sheet template for the chosen sample type.
+
+    :param args: Parsed command-line arguments.
+    :param client: The authenticated Flow client.
+    :param output: The result/error renderer.
+    :returns: :attr:`ExitCode.SUCCESS` on success.
+    """
+    columns = _template_columns(
+        client.samples.get_metadata_attributes(), args.sample_type,
+    )
+    header = ",".join(column.name for column in columns)
+    if args.output is not None:
+        args.output.write_text(f"{header}\n")
+        output.emit_advisory(f"Wrote sample-sheet template to {args.output}")
+    if output.json_mode or args.output is None:
+        output.emit_result(header, [column.descriptor for column in columns])
+    output.emit_advisory(_required_summary(columns))
+    return ExitCode.SUCCESS
+
+
+def _template_columns(
+    attributes: list[MetadataAttribute], sample_type: str,
+) -> list[_TemplateColumn]:
+    columns = [
+        _TemplateColumn(name, "reserved", required, None, description)
+        for name, required, description in _RESERVED_COLUMNS
+    ]
+    for attribute in attributes:
+        required = (
+            attribute.required or sample_type in attribute.required_for_sample_types
+        )
+        columns.append(
+            _TemplateColumn(
+                name=attribute.identifier,
+                kind="metadata",
+                required=required,
+                options=attribute.options,
+                description=attribute.description,
+            ),
+        )
+        if attribute.allow_annotation:
+            columns.append(
+                _TemplateColumn(
+                    name=f"{attribute.identifier}__annotation",
+                    kind="annotation",
+                    required=False,
+                    options=None,
+                    description=f"Free-text annotation for {attribute.identifier}.",
+                ),
+            )
+    return columns
+
+
+def _required_summary(columns: list[_TemplateColumn]) -> str:
+    required = [column.name for column in columns if column.required]
+    optional = [column.name for column in columns if not column.required]
+    return (
+        f"Required columns: {', '.join(required)}\n"
+        f"Optional columns: {', '.join(optional)}"
+    )
 
 
 def _merge_metadata(

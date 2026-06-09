@@ -27,7 +27,7 @@ Existing fields: `identifier`, `name`, `description`, `required`,
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `allows_annotation` | `bool` | Whether this attribute permits a free-text annotation companion. Drives the `<identifier>__annotation` columns and JSON descriptors in `batch-template`. |
+| `allow_annotation` | `bool` | Whether this attribute permits a free-text annotation companion. Drives the `<identifier>__annotation` columns and JSON descriptors in `batch-template`. |
 
 Rules:
 - Populated from the `/samples/metadata` response in `_create_metadata_attribute`.
@@ -114,7 +114,7 @@ Per-row pre-flight validation (FR-028), all errors collected before any upload:
 - `name` contains no spaces;
 - values for closed-option attributes are within `options`;
 - a `<id>__annotation` is set only when `<id>`'s value is set **and** the
-  attribute `allows_annotation`;
+  attribute `allow_annotation`;
 - empty cells omitted (not sent as empty values).
 
 ### `BatchResult` — `flowbio/cli/_samples.py`
@@ -158,7 +158,7 @@ list (no CSV):
 
 Column order: reserved columns first (`name`, `reads1`, `reads2`, `project`,
 `organism`), then one column per metadata attribute, each followed by its
-`<identifier>__annotation` column when `allows_annotation`. There is **no**
+`<identifier>__annotation` column when `allow_annotation`. There is **no**
 `sample_type` column.
 
 ### `AnnotationTemplate` result — `flowbio/cli/_samples.py`

@@ -80,6 +80,10 @@ class MetadataAttribute(BaseModel, frozen=True):
     options: list[str] | None = Field(
         description="The list of valid values, or ``None`` if any value is accepted.",
     )
+    allow_annotation: bool = Field(
+        default=False,
+        description="Whether this attribute permits a free-text annotation companion value.",
+    )
 
 
 class Project(BaseModel, frozen=True):

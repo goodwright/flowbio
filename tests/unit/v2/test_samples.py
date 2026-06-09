@@ -200,6 +200,55 @@ class TestGetMetadataAttributes:
 
         assert result[0].required_for_sample_types == ["rna_seq", "atac_seq"]
 
+    @respx.mock
+    def test_populates_allow_annotation_from_payload(self) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/samples/metadata").mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "identifier": "source",
+                    "name": "Source",
+                    "description": "Sample source",
+                    "required": False,
+                    "required_for_public": False,
+                    "all_sample_types": True,
+                    "allow_user_terms": False,
+                    "regex_validator": None,
+                    "has_options": False,
+                    "allow_annotation": True,
+                    "sample_type_links": [],
+                },
+            ]),
+        )
+
+        client = Client()
+        result = client.samples.get_metadata_attributes()
+
+        assert result[0].allow_annotation is True
+
+    @respx.mock
+    def test_allow_annotation_defaults_to_false_when_absent(self) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/samples/metadata").mock(
+            return_value=httpx.Response(200, json=[
+                {
+                    "identifier": "scientist",
+                    "name": "Scientist",
+                    "description": "Who ran it",
+                    "required": False,
+                    "required_for_public": False,
+                    "all_sample_types": True,
+                    "allow_user_terms": False,
+                    "regex_validator": None,
+                    "has_options": False,
+                    "sample_type_links": [],
+                },
+            ]),
+        )
+
+        client = Client()
+        result = client.samples.get_metadata_attributes()
+
+        assert result[0].allow_annotation is False
+
 
 class TestGetOwnedProjects:
 
