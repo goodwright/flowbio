@@ -112,8 +112,9 @@ def _configure_annotation_template(annotation_template: argparse.ArgumentParser)
     annotation_template.add_argument(
         "-o",
         "--output",
+        required=True,
         metavar="PATH",
-        help="File to write the .xlsx workbook to. Required when stdout is a terminal.",
+        help="File to write the .xlsx workbook to (the template is binary).",
     )
 
 
@@ -179,19 +180,14 @@ def _annotation_template_command(
     :param output: The result/error renderer.
     :returns: :attr:`ExitCode.SUCCESS` on success.
     """
-    destination = Path(args.output) if args.output is not None else None
-    if destination is None and (output.json_mode or output.stdout.isatty()):
-        raise CliUsageError(
-            "The annotation template is a binary workbook; pass -o/--output PATH.",
-        )
+    destination = Path(args.output)
     template = client.samples.get_annotation_template(args.sample_type)
-    if destination is None:
-        output.stdout.buffer.write(template)
-        output.emit_advisory(
-            f"Wrote {args.sample_type} annotation template to standard output",
-        )
-        return ExitCode.SUCCESS
-    destination.write_bytes(template)
+    try:
+        destination.write_bytes(template)
+    except OSError as error:
+        raise CliUsageError(
+            f"Could not write annotation template to {destination}: {error}",
+        ) from error
     if output.json_mode:
         output.emit_result(
             "", {"output": str(destination), "sample_type": args.sample_type},
@@ -222,7 +218,9 @@ def _upload_multiplexed_command(
         ignore_warnings=not args.reject_warnings,
     )
     if upload.warnings:
-        output.emit_advisory(f"Annotation warnings: {upload.warnings}")
+        output.emit_advisory("Annotation warnings:")
+        for warning in upload.warnings:
+            output.emit_advisory(f"  {_format_warning(warning)}")
     output.emit_result(
         f"Uploaded multiplexed data {', '.join(upload.data_ids)} "
         f"with annotation {upload.annotation_id}",
@@ -233,6 +231,14 @@ def _upload_multiplexed_command(
         },
     )
     return ExitCode.SUCCESS
+
+
+def _format_warning(warning: dict) -> str:
+    if "message" not in warning:
+        return str(warning)
+    row = warning.get("row")
+    prefix = f"row {row}: " if row is not None else ""
+    return f"{prefix}{warning['message']}"
 
 
 def _merge_metadata(

@@ -1,4 +1,3 @@
-import io
 import json
 from http import HTTPStatus
 from pathlib import Path
@@ -244,14 +243,7 @@ class TestSamplesAnnotationTemplate:
         assert route.called
 
     @respx.mock
-    def test_no_output_with_tty_stdout_is_usage_error(
-        self, run_cli, monkeypatch,
-    ) -> None:
-        class _TtyStringIO(io.StringIO):
-            def isatty(self) -> bool:
-                return True
-
-        monkeypatch.setattr(io, "StringIO", _TtyStringIO)
+    def test_missing_output_is_usage_error(self, run_cli) -> None:
         route = _mock_annotation_template("generic")
 
         result = run_cli("--token", TOKEN, "samples", "annotation-template")
@@ -260,15 +252,18 @@ class TestSamplesAnnotationTemplate:
         assert route.call_count == 0
 
     @respx.mock
-    def test_json_without_output_is_usage_error(
-        self, run_cli,
+    def test_unwritable_output_path_is_usage_error(
+        self, run_cli, tmp_path: Path,
     ) -> None:
-        route = _mock_annotation_template("generic")
+        _mock_annotation_template("generic")
+        output_path = tmp_path / "does-not-exist" / "sheet.xlsx"
 
-        result = run_cli("--token", TOKEN, "samples", "annotation-template", "--json")
+        result = run_cli(
+            "--token", TOKEN, "samples", "annotation-template",
+            "-o", str(output_path),
+        )
 
         assert result.exit_code == 2
-        assert route.call_count == 0
 
     @respx.mock
     def test_json_emits_single_document_without_bytes(
@@ -390,6 +385,32 @@ class TestSamplesUploadMultiplexed:
 
         assert result.exit_code == 0
         assert json.loads(result.stdout)["warnings"] == warnings
+
+    @respx.mock
+    def test_warnings_rendered_readably_in_human_mode(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        message = "Unknown barcode"
+        annotation = respx.post(ANNOTATION_UPLOAD_URL)
+        annotation.side_effect = [
+            httpx.Response(
+                HTTPStatus.BAD_REQUEST,
+                json={"warnings": [{"row": 1, "message": message}]},
+            ),
+            httpx.Response(HTTPStatus.OK, json={"id": "ann_1"}),
+        ]
+        _mock_multiplexed()
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "upload-multiplexed",
+            "--reads1", str(_reads(tmp_path, "r1.fq.gz")),
+            "--annotation", str(_annotation(tmp_path)),
+            "--no-progress",
+        )
+
+        assert result.exit_code == 0
+        assert f"row 1: {message}" in result.stderr
+        assert "{'row'" not in result.stderr
 
     @respx.mock
     def test_reject_warnings_rejects_upload(
