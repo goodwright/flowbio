@@ -2,8 +2,9 @@
 
 A thin wrapper over :attr:`Client.samples <flowbio.v2.Client.samples>`: it parses
 the command line, merges metadata supplied as ``key=value`` pairs and/or a JSON
-object, calls the library, and renders the result. The ``--sample-type`` is sent
-as-is and validated server-side, not pre-checked by the CLI.
+object, calls the library, and renders the result. Most commands send
+``--sample-type`` as-is for server-side validation; ``batch-template`` is the
+exception, pre-checking the type against the available types up front.
 """
 from __future__ import annotations
 
