@@ -292,11 +292,11 @@ class _TemplateColumn:
 
 
 _RESERVED_COLUMNS = (
-    ("name", True, "Unique sample name (no spaces)."),
-    ("reads1", True, "Path to the first reads file."),
-    ("reads2", False, "Path to the second reads file (paired-end)."),
-    ("project", False, "Project identifier to assign the sample to."),
-    ("organism", False, "Organism identifier to associate with the sample."),
+    _TemplateColumn("name", "reserved", True, None, "Unique sample name (no spaces)."),
+    _TemplateColumn("reads1", "reserved", True, None, "Path to the first reads file."),
+    _TemplateColumn("reads2", "reserved", False, None, "Path to the second reads file (paired-end)."),
+    _TemplateColumn("project", "reserved", False, None, "Project identifier to assign the sample to."),
+    _TemplateColumn("organism", "reserved", False, None, "Organism identifier to associate with the sample."),
 )
 
 
@@ -331,10 +331,7 @@ def _batch_template_command(
 def _template_columns(
     attributes: list[MetadataAttribute], sample_type: str,
 ) -> list[_TemplateColumn]:
-    columns = [
-        _TemplateColumn(name, "reserved", required, None, description)
-        for name, required, description in _RESERVED_COLUMNS
-    ]
+    columns = list(_RESERVED_COLUMNS)
     for attribute in attributes:
         required = (
             attribute.required or sample_type in attribute.required_for_sample_types
