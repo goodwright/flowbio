@@ -74,6 +74,7 @@ def _configure_upload(upload: argparse.ArgumentParser) -> None:
         "--sample-type",
         required=True,
         metavar="TYPE",
+        type=SampleTypeId,
         help="Sample type identifier (sent as-is; validated server-side).",
     )
     upload.add_argument(
@@ -120,6 +121,7 @@ def _configure_annotation_template(annotation_template: argparse.ArgumentParser)
         "--sample-type",
         default="generic",
         metavar="TYPE",
+        type=SampleTypeId,
         help=(
             "Sample type identifier (sent as-is; validated server-side). "
             "Defaults to 'generic' (base columns common to all types)."
@@ -174,6 +176,7 @@ def _configure_batch_template(batch_template: argparse.ArgumentParser) -> None:
         "--sample-type",
         required=True,
         metavar="TYPE",
+        type=SampleTypeId,
         help="Sample type the template is built for (decides required columns).",
     )
     batch_template.add_argument(
@@ -198,7 +201,7 @@ def _upload_command(args: argparse.Namespace, client: Client, output: Output) ->
         data["reads2"] = existing_file(args.reads2)
     sample = client.samples.upload_sample(
         name=args.name,
-        sample_type=SampleTypeId(args.sample_type),
+        sample_type=args.sample_type,
         data=data,
         metadata=metadata or None,
         project_id=args.project,
@@ -219,7 +222,7 @@ def _annotation_template_command(
     :returns: :attr:`ExitCode.SUCCESS` on success.
     """
     destination = args.output
-    template = client.samples.get_annotation_template(SampleTypeId(args.sample_type))
+    template = client.samples.get_annotation_template(args.sample_type)
     try:
         destination.write_bytes(template)
     except OSError as error:
@@ -311,10 +314,9 @@ def _batch_template_command(
     :param output: The result/error renderer.
     :returns: :attr:`ExitCode.SUCCESS` on success.
     """
-    sample_type = SampleTypeId(args.sample_type)
-    _check_sample_type(client, sample_type)
+    _check_sample_type(client, args.sample_type)
     columns = _template_columns(
-        client.samples.get_metadata_attributes(), sample_type,
+        client.samples.get_metadata_attributes(), args.sample_type,
     )
     header = ",".join(column.name for column in columns)
     if args.output is not None:
