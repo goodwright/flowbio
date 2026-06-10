@@ -17,8 +17,15 @@ from typing import Literal
 from flowbio.cli._exit_codes import CliUsageError, ExitCode
 from flowbio.cli._files import existing_file
 from flowbio.cli._output import Output, format_issue
+from flowbio.cli._sheet import (
+    ANNOTATION_SUFFIX,
+    SheetRow,
+    parse_sheet,
+    validate_row,
+)
 from flowbio.cli._types import JsonValue
 from flowbio.v2.client import Client
+from flowbio.v2.exceptions import FlowApiError
 from flowbio.v2.samples import MetadataAttribute, SampleTypeId
 
 
@@ -58,6 +65,15 @@ def register(
         description=(
             "Emit a CSV sample-sheet header (or a per-column descriptor under "
             "--json) for use with 'samples upload-batch'."
+        ),
+    ))
+    _configure_upload_batch(verbs.add_parser(
+        "upload-batch",
+        parents=[global_parent],
+        help="Upload many samples from a CSV sample sheet.",
+        description=(
+            "Validate every row of a CSV sample sheet up front, then upload the "
+            "valid rows sequentially, reporting each row's outcome."
         ),
     ))
 
@@ -184,6 +200,36 @@ def _configure_batch_template(batch_template: argparse.ArgumentParser) -> None:
         metavar="PATH",
         type=Path,
         help="Write the CSV template to this file instead of stdout.",
+    )
+
+
+def _configure_upload_batch(upload_batch: argparse.ArgumentParser) -> None:
+    upload_batch.set_defaults(
+        command_parser=upload_batch, handler=_upload_batch_command,
+    )
+    upload_batch.add_argument(
+        "--sheet",
+        required=True,
+        metavar="PATH",
+        type=Path,
+        help="CSV sample sheet (the filled-in `samples batch-template` output).",
+    )
+    upload_batch.add_argument(
+        "--sample-type",
+        required=True,
+        metavar="TYPE",
+        type=SampleTypeId,
+        help="Sample type applied to every row (sent as-is; validated server-side).",
+    )
+    upload_batch.add_argument(
+        "--skip-invalid",
+        action="store_true",
+        help="Skip invalid rows (reporting why) instead of aborting the batch.",
+    )
+    upload_batch.add_argument(
+        "--stop-on-error",
+        action="store_true",
+        help="Abort on the first row that fails to upload.",
     )
 
 
@@ -362,7 +408,7 @@ def _template_columns(
         if attribute.allow_annotation:
             columns.append(
                 _TemplateColumn(
-                    name=f"{attribute.identifier}__annotation",
+                    name=f"{attribute.identifier}{ANNOTATION_SUFFIX}",
                     kind="annotation",
                     required=False,
                     options=None,
@@ -379,6 +425,137 @@ def _required_summary(columns: list[_TemplateColumn]) -> str:
         f"Required columns: {', '.join(required)}\n"
         f"Optional columns: {', '.join(optional)}"
     )
+
+
+@dataclass(frozen=True)
+class _BatchResult:
+    """The outcome of an ``upload-batch`` run, rendered to text or JSON."""
+
+    uploaded: list[dict[str, JsonValue]]
+    failed: list[dict[str, JsonValue]]
+    skipped: list[dict[str, JsonValue]]
+
+    @property
+    def counts(self) -> dict[str, int]:
+        return {
+            "uploaded": len(self.uploaded),
+            "failed": len(self.failed),
+            "skipped": len(self.skipped),
+        }
+
+    @property
+    def document(self) -> dict[str, JsonValue]:
+        return {
+            "uploaded": self.uploaded,
+            "failed": self.failed,
+            "skipped": self.skipped,
+            "counts": self.counts,
+        }
+
+    @property
+    def summary(self) -> str:
+        counts = self.counts
+        return (
+            f"Uploaded {counts['uploaded']}, failed {counts['failed']}, "
+            f"skipped {counts['skipped']}."
+        )
+
+    @property
+    def exit_code(self) -> ExitCode:
+        return ExitCode.RUNTIME if self.failed else ExitCode.SUCCESS
+
+
+def _upload_batch_command(
+    args: argparse.Namespace, client: Client, output: Output,
+) -> ExitCode:
+    """Validate a sample sheet up front, then upload the valid rows.
+
+    :param args: Parsed command-line arguments.
+    :param client: The authenticated Flow client.
+    :param output: The result/error renderer.
+    :returns: :attr:`ExitCode.SUCCESS` when every row uploaded,
+        :attr:`ExitCode.USAGE` on a pre-flight validation failure without
+        ``--skip-invalid``, or :attr:`ExitCode.RUNTIME` if any upload failed.
+    """
+    sheet = parse_sheet(args.sheet)
+    attributes = client.samples.get_metadata_attributes()
+    classified = [
+        (row, validate_row(row, attributes, args.sample_type))
+        for row in sheet.rows
+    ]
+    invalid = [(row, reasons) for row, reasons in classified if reasons]
+    valid = [row for row, reasons in classified if not reasons]
+
+    if invalid and not args.skip_invalid:
+        output.emit_error(
+            "Sample sheet has invalid rows; nothing was uploaded.",
+            details=[_invalid_line(row, reasons) for row, reasons in invalid],
+        )
+        return ExitCode.USAGE
+
+    for row, reasons in invalid:
+        output.emit_advisory(f"Skipped {_invalid_line(row, reasons)}")
+    skipped = [
+        {"row_number": row.row_number, "name": row.name, "reasons": reasons}
+        for row, reasons in invalid
+    ]
+    result = _upload_rows(valid, args, client, output, skipped)
+    output.emit_result(result.summary, result.document)
+    return result.exit_code
+
+
+def _upload_rows(
+    rows: list[SheetRow],
+    args: argparse.Namespace,
+    client: Client,
+    output: Output,
+    skipped: list[dict[str, JsonValue]],
+) -> _BatchResult:
+    uploaded: list[dict[str, JsonValue]] = []
+    failed: list[dict[str, JsonValue]] = []
+    for row in rows:
+        try:
+            sample = client.samples.upload_sample(
+                name=row.name,
+                sample_type=args.sample_type,
+                data=_row_reads(row),
+                metadata=row.metadata or None,
+                project_id=row.project,
+                organism_id=row.organism,
+            )
+        except FlowApiError as error:
+            failed.append({
+                "row_number": row.row_number,
+                "name": row.name,
+                "message": error.message,
+            })
+            output.emit_advisory(
+                f"Row {row.row_number} ({row.name}): upload failed — {error.message}",
+            )
+            if args.stop_on_error:
+                break
+            continue
+        uploaded.append({
+            "row_number": row.row_number,
+            "name": row.name,
+            "sample_id": sample.id,
+        })
+        output.emit_advisory(
+            f"Row {row.row_number} ({row.name}): uploaded {sample.id}",
+        )
+    return _BatchResult(uploaded=uploaded, failed=failed, skipped=skipped)
+
+
+def _row_reads(row: SheetRow) -> dict[str, Path]:
+    return {
+        label: path
+        for label, path in (("reads1", row.reads1), ("reads2", row.reads2))
+        if path is not None
+    }
+
+
+def _invalid_line(row: SheetRow, reasons: list[str]) -> str:
+    return f"Row {row.row_number} ({row.name}): {'; '.join(reasons)}"
 
 
 def _merge_metadata(

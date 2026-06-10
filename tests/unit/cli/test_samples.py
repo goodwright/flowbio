@@ -1,3 +1,4 @@
+import csv
 import json
 from http import HTTPStatus
 from pathlib import Path
@@ -660,3 +661,265 @@ class TestSamplesBatchTemplate:
         result = run_cli("samples", "batch-template", "--token", TOKEN)
 
         assert result.exit_code == 2
+
+
+BATCH_HEADERS = [
+    "name", "reads1", "reads2", "project", "organism",
+    "cell_type", "source", "source__annotation",
+]
+
+
+def _write_batch_sheet(directory: Path, *records: dict[str, str]) -> Path:
+    path = directory / "sheet.csv"
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=BATCH_HEADERS)
+        writer.writeheader()
+        writer.writerows(records)
+    return path
+
+
+class TestSamplesUploadBatch:
+
+    @respx.mock
+    def test_uploads_all_rows_with_uniform_sample_type(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        _mock_metadata()
+        upload = respx.post(SAMPLE_UPLOAD_URL)
+        upload.side_effect = [
+            httpx.Response(HTTPStatus.OK, json={"sample_id": "samp_1", "data_id": "d1"}),
+            httpx.Response(HTTPStatus.OK, json={"sample_id": "samp_2", "data_id": "d2"}),
+        ]
+        _reads(tmp_path, "r1.fq.gz")
+        _reads(tmp_path, "r2.fq.gz")
+        sheet = _write_batch_sheet(
+            tmp_path,
+            {"name": "s1", "reads1": "r1.fq.gz", "cell_type": "Neuron"},
+            {"name": "s2", "reads1": "r2.fq.gz", "cell_type": "Fibroblast"},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "upload-batch",
+            "--sheet", str(sheet), "--sample-type", "rna_seq", "--no-progress",
+        )
+
+        assert result.exit_code == 0
+        assert upload.call_count == 2
+        for call in upload.calls:
+            fields, _ = parse_multipart(call.request)
+            assert fields["sample_type"] == "rna_seq"
+
+    @respx.mock
+    def test_reads_resolved_relative_to_sheet_directory(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        _mock_metadata()
+        _mock_single_upload()
+        sheet_dir = tmp_path / "run"
+        sheet_dir.mkdir()
+        _reads(sheet_dir, "r1.fq.gz")
+        sheet = _write_batch_sheet(
+            sheet_dir, {"name": "s1", "reads1": "r1.fq.gz", "cell_type": "Neuron"},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "upload-batch",
+            "--sheet", str(sheet), "--sample-type", "rna_seq", "--no-progress",
+        )
+
+        assert result.exit_code == 0
+
+    @respx.mock
+    def test_invalid_row_aborts_and_uploads_nothing(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        _mock_metadata()
+        upload = _mock_single_upload()
+        _reads(tmp_path, "r1.fq.gz")
+        sheet = _write_batch_sheet(
+            tmp_path,
+            {"name": "s1", "reads1": "r1.fq.gz", "cell_type": "Neuron"},
+            {"name": "s2", "reads1": "missing.fq.gz", "cell_type": "Neuron"},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "upload-batch",
+            "--sheet", str(sheet), "--sample-type", "rna_seq", "--no-progress",
+        )
+
+        assert result.exit_code == 2
+        assert upload.call_count == 0
+        assert "Row 2" in result.stderr
+        assert "s2" in result.stderr
+
+    @respx.mock
+    def test_invalid_row_abort_emits_json_error_on_stderr_only(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        _mock_metadata()
+        upload = _mock_single_upload()
+        _reads(tmp_path, "r1.fq.gz")
+        sheet = _write_batch_sheet(
+            tmp_path,
+            {"name": "s1", "reads1": "r1.fq.gz", "cell_type": "Neuron"},
+            {"name": "s2", "reads1": "missing.fq.gz", "cell_type": "Neuron"},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "upload-batch",
+            "--sheet", str(sheet), "--sample-type", "rna_seq",
+            "--no-progress", "--json",
+        )
+
+        assert result.exit_code == 2
+        assert upload.call_count == 0
+        assert result.stdout == ""
+        assert any(
+            "s2" in detail for detail in json.loads(result.stderr)["errors"]
+        )
+
+    @respx.mock
+    def test_skip_invalid_uploads_valid_rows(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        _mock_metadata()
+        upload = _mock_single_upload("samp_ok")
+        _reads(tmp_path, "r1.fq.gz")
+        sheet = _write_batch_sheet(
+            tmp_path,
+            {"name": "s1", "reads1": "r1.fq.gz", "cell_type": "Neuron"},
+            {"name": "s2", "reads1": "missing.fq.gz", "cell_type": "Neuron"},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "upload-batch",
+            "--sheet", str(sheet), "--sample-type", "rna_seq",
+            "--skip-invalid", "--no-progress",
+        )
+
+        assert result.exit_code == 0
+        assert upload.call_count == 1
+        assert "s2" in result.stderr
+
+    @respx.mock
+    def test_default_continues_past_upload_failure(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        _mock_metadata()
+        upload = respx.post(SAMPLE_UPLOAD_URL)
+        upload.side_effect = [
+            httpx.Response(HTTPStatus.BAD_REQUEST, json={"error": "bad"}),
+            httpx.Response(HTTPStatus.OK, json={"sample_id": "samp_2", "data_id": "d2"}),
+        ]
+        _reads(tmp_path, "r1.fq.gz")
+        _reads(tmp_path, "r2.fq.gz")
+        sheet = _write_batch_sheet(
+            tmp_path,
+            {"name": "s1", "reads1": "r1.fq.gz", "cell_type": "Neuron"},
+            {"name": "s2", "reads1": "r2.fq.gz", "cell_type": "Neuron"},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "upload-batch",
+            "--sheet", str(sheet), "--sample-type", "rna_seq", "--no-progress",
+        )
+
+        assert result.exit_code == 1
+        assert upload.call_count == 2
+
+    @respx.mock
+    def test_stop_on_error_aborts_after_first_failure(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        _mock_metadata()
+        upload = respx.post(SAMPLE_UPLOAD_URL)
+        upload.side_effect = [
+            httpx.Response(HTTPStatus.OK, json={"sample_id": "samp_1", "data_id": "d1"}),
+            httpx.Response(HTTPStatus.BAD_REQUEST, json={"error": "bad"}),
+            httpx.Response(HTTPStatus.OK, json={"sample_id": "samp_3", "data_id": "d3"}),
+        ]
+        for name in ("r1.fq.gz", "r2.fq.gz", "r3.fq.gz"):
+            _reads(tmp_path, name)
+        sheet = _write_batch_sheet(
+            tmp_path,
+            {"name": "s1", "reads1": "r1.fq.gz", "cell_type": "Neuron"},
+            {"name": "s2", "reads1": "r2.fq.gz", "cell_type": "Neuron"},
+            {"name": "s3", "reads1": "r3.fq.gz", "cell_type": "Neuron"},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "upload-batch",
+            "--sheet", str(sheet), "--sample-type", "rna_seq",
+            "--stop-on-error", "--no-progress", "--json",
+        )
+
+        assert result.exit_code == 1
+        assert upload.call_count == 2
+        assert [row["name"] for row in json.loads(result.stdout)["uploaded"]] == ["s1"]
+
+    @respx.mock
+    def test_json_document_reports_outcomes_and_counts(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        _mock_metadata()
+        upload = respx.post(SAMPLE_UPLOAD_URL)
+        upload.side_effect = [
+            httpx.Response(HTTPStatus.OK, json={"sample_id": "samp_1", "data_id": "d1"}),
+            httpx.Response(HTTPStatus.BAD_REQUEST, json={"error": "bad"}),
+        ]
+        _reads(tmp_path, "r1.fq.gz")
+        _reads(tmp_path, "r2.fq.gz")
+        sheet = _write_batch_sheet(
+            tmp_path,
+            {"name": "s1", "reads1": "r1.fq.gz", "cell_type": "Neuron"},
+            {"name": "s2", "reads1": "r2.fq.gz", "cell_type": "Neuron"},
+            {"name": "s3", "reads1": "missing.fq.gz", "cell_type": "Neuron"},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "upload-batch",
+            "--sheet", str(sheet), "--sample-type", "rna_seq",
+            "--skip-invalid", "--no-progress", "--json",
+        )
+
+        assert result.exit_code == 1
+        document = json.loads(result.stdout)
+        assert result.stdout.count("\n") == 1
+        assert document["counts"] == {"uploaded": 1, "failed": 1, "skipped": 1}
+        assert document["uploaded"][0]["sample_id"] == "samp_1"
+        assert document["failed"][0]["name"] == "s2"
+        assert document["skipped"][0]["name"] == "s3"
+
+    @respx.mock
+    def test_sample_type_is_not_pre_validated_against_server(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        _mock_metadata()
+        upload = _mock_single_upload("samp_unknown")
+        _reads(tmp_path, "r1.fq.gz")
+        sheet = _write_batch_sheet(tmp_path, {"name": "s1", "reads1": "r1.fq.gz"})
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "upload-batch",
+            "--sheet", str(sheet), "--sample-type", "absent_from_types",
+            "--no-progress",
+        )
+
+        assert result.exit_code == 0
+        assert upload.call_count == 1
+
+    @respx.mock
+    def test_non_csv_sheet_is_usage_error(self, run_cli, tmp_path: Path) -> None:
+        _mock_metadata()
+        upload = _mock_single_upload()
+        xlsx = tmp_path / "sheet.xlsx"
+        xlsx.write_bytes(b"PK\x03\x04")
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "upload-batch",
+            "--sheet", str(xlsx), "--sample-type", "rna_seq", "--no-progress",
+        )
+
+        assert result.exit_code == 2
+        assert upload.call_count == 0
+        assert "CSV" in result.stderr
