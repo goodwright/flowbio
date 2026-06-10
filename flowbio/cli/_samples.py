@@ -11,6 +11,7 @@ import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from flowbio.cli._exit_codes import CliUsageError, ExitCode
 from flowbio.cli._files import existing_file
@@ -274,7 +275,7 @@ class _TemplateColumn:
     """One column of a sample-sheet template, in CSV order."""
 
     name: str
-    kind: str
+    kind: Literal["reserved", "metadata", "annotation"]
     required: bool
     options: list[str] | None
     description: str
@@ -314,7 +315,12 @@ def _batch_template_command(
     )
     header = ",".join(column.name for column in columns)
     if args.output is not None:
-        args.output.write_text(f"{header}\n")
+        try:
+            args.output.write_text(f"{header}\n")
+        except OSError as error:
+            raise CliUsageError(
+                f"Could not write sample-sheet template to {args.output}: {error}",
+            ) from error
         output.emit_advisory(f"Wrote sample-sheet template to {args.output}")
     if output.json_mode or args.output is None:
         output.emit_result(header, [column.descriptor for column in columns])

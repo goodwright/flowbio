@@ -618,6 +618,21 @@ class TestSamplesBatchTemplate:
             "name", "reads1", "reads2", "project", "organism",
         ]
 
+    @respx.mock
+    def test_unwritable_output_path_is_usage_error(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        _mock_metadata()
+        destination = tmp_path / "does-not-exist" / "template.csv"
+
+        result = run_cli(
+            "samples", "batch-template", "--sample-type", "rna_seq",
+            "-o", str(destination), "--token", TOKEN,
+        )
+
+        assert result.exit_code == 2
+        assert "Traceback" not in result.stderr
+
     def test_missing_sample_type_is_usage_error(self, run_cli) -> None:
         result = run_cli("samples", "batch-template", "--token", TOKEN)
 
