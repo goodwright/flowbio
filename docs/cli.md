@@ -269,3 +269,65 @@ name,reads1,reads2,project,organism,cell_type,source,source__annotation
 $ flowbio samples batch-template --sample-type rna_seq --json
 [{"name": "name", "kind": "reserved", "required": true, "options": null, "description": "..."}, ...]
 ```
+
+### `samples upload-batch`
+
+Upload many samples from a filled-in CSV sample sheet, applying one sample type
+to every row.
+
+```
+flowbio samples upload-batch --sheet PATH --sample-type TYPE
+    [--skip-invalid] [--stop-on-error]
+```
+
+Run `flowbio samples upload-batch --help` for the full option list. The sheet is
+the CSV produced by `samples batch-template` (see that command for the schema);
+it must be a `.csv` — an `.xlsx` or `.tsv` is a usage error directing you to
+export to CSV. Reads paths in the sheet are resolved relative to the **sheet
+file's own directory** (absolute paths are used as-is), and empty cells are
+omitted rather than sent as empty values. The sample type is sent as-is and
+validated server-side.
+
+**Validation is up front.** Every row is validated *before any upload*, and all
+problems on a row are reported together — a missing `name`/`reads1`, a reads file
+that is not on disk, a name containing spaces, a value outside a closed-option
+attribute's allowed values, metadata required for the chosen type that is
+missing, or a `<identifier>__annotation` companion set without its value or on an
+attribute that does not permit annotations.
+
+- By default, **any** invalid row aborts the whole run: every row's errors are
+  reported (with its 1-based row number and name), nothing is uploaded, exit `2`.
+- `--skip-invalid` skips the invalid rows (reporting why) and uploads the rest.
+
+Valid rows upload **sequentially in sheet order**. By default a row that fails to
+upload is recorded and the run continues; `--stop-on-error` aborts on the first
+failing row, reporting the rows already uploaded.
+
+**Output** — human: each row's outcome on stderr, then a final counts summary on
+stdout. `--json`: a single document on stdout with `uploaded`, `failed`, and
+`skipped` lists plus a `counts` summary:
+
+```json
+{
+  "uploaded": [{"row_number": 1, "name": "s1", "sample_id": "samp_1"}],
+  "failed":   [{"row_number": 2, "name": "s2", "message": "..."}],
+  "skipped":  [{"row_number": 3, "name": "s3", "reasons": ["..."]}],
+  "counts":   {"uploaded": 1, "failed": 1, "skipped": 1}
+}
+```
+
+**Exit codes** — `0` every row uploaded; `2` a pre-flight validation failure
+(without `--skip-invalid`) or a non-CSV sheet; `1` any upload failure; `3`
+authentication failure; otherwise the standard mapping above.
+
+**Example**
+
+```bash
+$ flowbio samples upload-batch --sheet ./samples.csv --sample-type rna_seq
+Row 1 (liver_r1): uploaded samp_1
+Row 2 (liver_r2): uploaded samp_2
+Uploaded 2, failed 0, skipped 0.
+
+$ flowbio samples upload-batch --sheet ./samples.csv --sample-type rna_seq --json
+{"uploaded": [{"row_number": 1, "name": "liver_r1", "sample_id": "samp_1"}], "failed": [], "skipped": [], "counts": {"uploaded": 1, "failed": 0, "skipped": 0}}
+```
