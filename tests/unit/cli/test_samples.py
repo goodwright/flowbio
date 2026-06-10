@@ -486,6 +486,15 @@ RESERVED_HEADER = "name,reads1,reads2,project,organism"
 
 
 def _mock_metadata() -> None:
+    respx.get(f"{DEFAULT_BASE_URL}/samples/types").mock(
+        return_value=httpx.Response(HTTPStatus.OK, json=[
+            {
+                "identifier": "rna_seq",
+                "name": "RNA-Seq",
+                "description": "RNA sequencing.",
+            },
+        ]),
+    )
     respx.get(METADATA_URL).mock(
         return_value=httpx.Response(HTTPStatus.OK, json=[
             {
@@ -632,6 +641,20 @@ class TestSamplesBatchTemplate:
 
         assert result.exit_code == 2
         assert "Traceback" not in result.stderr
+
+    @respx.mock
+    def test_unknown_sample_type_is_usage_error_listing_types(self, run_cli) -> None:
+        _mock_metadata()
+
+        result = run_cli(
+            "samples", "batch-template", "--sample-type", "bogus",
+            "--token", TOKEN,
+        )
+
+        assert result.exit_code == 2
+        assert "bogus" in result.stderr
+        assert "rna_seq" in result.stderr
+        assert result.stdout == ""
 
     def test_missing_sample_type_is_usage_error(self, run_cli) -> None:
         result = run_cli("samples", "batch-template", "--token", TOKEN)

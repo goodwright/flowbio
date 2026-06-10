@@ -232,9 +232,9 @@ flowbio samples batch-template --sample-type TYPE [-o PATH | --output PATH]
 ```
 
 Run `flowbio samples batch-template --help` for the full option list. The sample
-type decides which metadata columns are marked required; it is **not** validated
-here (see exit codes below) — an unrecognised type simply yields a template with
-nothing flagged required-for-that-type.
+type decides which metadata columns are marked required. It is validated against
+the available types up front: an unrecognised type fails with a usage error
+(exit `2`) listing the valid identifiers.
 
 **Sample-sheet schema** — the columns, in order:
 
@@ -256,10 +256,9 @@ descriptor list on stdout (`name`, `kind` of `reserved`/`metadata`/`annotation`,
 `required`, closed-value `options` or `null`, and `description`) and **no CSV** —
 so an agent can build rows directly.
 
-**Exit codes** — `0` success; `2` missing `--sample-type`; `3` authentication
-failure; otherwise the standard mapping above. The sample type is not checked
-against the server here, so an unknown type still exits `0`; the type is
-validated when you run `samples upload-batch`.
+**Exit codes** — `0` success; `2` missing `--sample-type`, or an unknown sample
+type (the error lists the available types); `3` authentication failure;
+otherwise the standard mapping above.
 
 **Example**
 

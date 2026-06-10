@@ -310,6 +310,7 @@ def _batch_template_command(
     :param output: The result/error renderer.
     :returns: :attr:`ExitCode.SUCCESS` on success.
     """
+    _check_sample_type(client, args.sample_type)
     columns = _template_columns(
         client.samples.get_metadata_attributes(), args.sample_type,
     )
@@ -326,6 +327,15 @@ def _batch_template_command(
         output.emit_result(header, [column.descriptor for column in columns])
     output.emit_advisory(_required_summary(columns))
     return ExitCode.SUCCESS
+
+
+def _check_sample_type(client: Client, sample_type: str) -> None:
+    identifiers = [sample.identifier for sample in client.samples.get_types()]
+    if sample_type not in identifiers:
+        raise CliUsageError(
+            f"Unknown sample type '{sample_type}'. "
+            f"Available types: {', '.join(sorted(identifiers))}",
+        )
 
 
 def _template_columns(

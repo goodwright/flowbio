@@ -26,6 +26,10 @@ then one column per metadata attribute, each followed by a
 Data sourced from `client.samples.get_metadata_attributes()` (and its
 `allow_annotation`, `options`, `required`, `required_for_sample_types`).
 
+The `--sample-type` is validated against `client.samples.get_types()` before any
+template is produced; an unrecognised type is a usage error listing the available
+identifiers.
+
 ## Output
 
 - **Human (no `--json`)**: CSV header row on stdout (or to `--output`); a
@@ -43,8 +47,9 @@ Data sourced from `client.samples.get_metadata_attributes()` (and its
 
 ## Exit codes
 
-`0` success; `2` missing `--sample-type`; `4` unknown sample type (if surfaced by
-the lookup); standard mapping otherwise.
+`0` success; `2` missing `--sample-type`, or an unknown sample type (validated
+against `get_types()`, the error lists the available identifiers); standard
+mapping otherwise.
 
 ## Acceptance mapping
 
