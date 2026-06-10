@@ -65,7 +65,10 @@ def parse_sheet(path: Path) -> SampleSheet:
             f"Export your spreadsheet to CSV first.",
         )
     existing_file(path)
-    with path.open(newline="") as handle:
+    # utf-8-sig transparently strips a leading BOM, which spreadsheet tools
+    # (notably Excel's "CSV UTF-8" export) prepend — otherwise the first header
+    # parses as "﻿name" and every row reports a missing name.
+    with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
         headers = reader.fieldnames or []
         metadata_columns = [
@@ -158,7 +161,11 @@ def _metadata_errors(
         if key.endswith(ANNOTATION_SUFFIX):
             continue
         attribute = by_identifier.get(key)
-        if attribute is not None and attribute.options is not None and value not in attribute.options:
+        if (
+            attribute is not None
+            and attribute.options is not None
+            and value not in attribute.options
+        ):
             errors.append(
                 f"value '{value}' for {key} is not one of: "
                 f"{', '.join(attribute.options)}",

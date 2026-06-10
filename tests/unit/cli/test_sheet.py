@@ -89,6 +89,18 @@ class TestParseSheet:
 
         assert sheet.rows[0].metadata == {"source": "blood"}
 
+    def test_utf8_bom_is_stripped_from_first_header(self, tmp_path: Path) -> None:
+        path = tmp_path / "sheet.csv"
+        with path.open("w", newline="", encoding="utf-8-sig") as handle:
+            writer = csv.DictWriter(handle, fieldnames=HEADERS)
+            writer.writeheader()
+            writer.writerow({"name": "s1", "reads1": "r1.fq.gz"})
+
+        sheet = parse_sheet(path)
+
+        assert sheet.metadata_columns == ["cell_type", "source", "source__annotation"]
+        assert sheet.rows[0].name == "s1"
+
     def test_row_numbers_are_one_based(self, tmp_path: Path) -> None:
         sheet = parse_sheet(_write_sheet(
             tmp_path,
