@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NewType
 
 from pydantic import BaseModel, Field
 
@@ -43,6 +43,11 @@ if TYPE_CHECKING:
     from flowbio.v2._uploads import ChunkedUploader
 
 
+SampleTypeId = NewType("SampleTypeId", str)
+"""The identifier of a sample type (e.g. ``"RNA-Seq"``), as listed by
+:meth:`SampleResource.get_types`."""
+
+
 class SampleType(BaseModel, frozen=True):
     """A type of sample that can be uploaded to the Flow platform.
 
@@ -53,7 +58,7 @@ class SampleType(BaseModel, frozen=True):
             print(f"{st.identifier}: {st.name}")
     """
 
-    identifier: str = Field(description="Unique identifier for this sample type.")
+    identifier: SampleTypeId = Field(description="Unique identifier for this sample type.")
     name: str = Field(description="Human-readable display name.")
     description: str = Field(description="Explanation of what this sample type represents.")
 
@@ -74,7 +79,7 @@ class MetadataAttribute(BaseModel, frozen=True):
     name: str = Field(description="Human-readable display name.")
     description: str = Field(description="Explanation of what this attribute represents.")
     required: bool = Field(description="Whether this attribute is required at sample creation.")
-    required_for_sample_types: list[str] = Field(
+    required_for_sample_types: list[SampleTypeId] = Field(
         description="Sample type identifiers for which this attribute is required at creation.",
     )
     options: list[str] | None = Field(
@@ -150,7 +155,7 @@ class SampleResource:
     def upload_sample(
         self,
         name: str,
-        sample_type: str,
+        sample_type: SampleTypeId,
         data: dict[str, Path],
         metadata: dict[str, str] | None = None,
         project_id: str | None = None,
@@ -302,7 +307,9 @@ class SampleResource:
             warnings=warnings,
         )
 
-    def get_annotation_template(self, sample_type: str = "generic") -> bytes:
+    def get_annotation_template(
+        self, sample_type: SampleTypeId = SampleTypeId("generic"),
+    ) -> bytes:
         """Download an annotation sheet template for multiplexed uploads.
 
         Annotation sheets are spreadsheets that describe multiple samples
@@ -394,7 +401,7 @@ class SampleResource:
 
     def _create_metadata_attribute(self, item: dict) -> MetadataAttribute:
         item["required_for_sample_types"] = [
-            link["sample_type_identifier"]
+            SampleTypeId(link["sample_type_identifier"])
             for link in item.get("sample_type_links", [])
             if link.get("required")
         ]
@@ -444,7 +451,7 @@ class SampleResource:
     @staticmethod
     def _build_sample_fields(
         name: str,
-        sample_type: str,
+        sample_type: SampleTypeId,
         metadata: dict[str, str] | None,
         project_id: str | None,
         organism_id: str | None,

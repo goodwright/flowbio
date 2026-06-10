@@ -18,7 +18,7 @@ from flowbio.cli._files import existing_file
 from flowbio.cli._output import Output, format_issue
 from flowbio.cli._types import JsonValue
 from flowbio.v2.client import Client
-from flowbio.v2.samples import MetadataAttribute
+from flowbio.v2.samples import MetadataAttribute, SampleTypeId
 
 
 def register(
@@ -197,7 +197,7 @@ def _upload_command(args: argparse.Namespace, client: Client, output: Output) ->
         data["reads2"] = existing_file(args.reads2)
     sample = client.samples.upload_sample(
         name=args.name,
-        sample_type=args.sample_type,
+        sample_type=SampleTypeId(args.sample_type),
         data=data,
         metadata=metadata or None,
         project_id=args.project,
@@ -218,7 +218,7 @@ def _annotation_template_command(
     :returns: :attr:`ExitCode.SUCCESS` on success.
     """
     destination = args.output
-    template = client.samples.get_annotation_template(args.sample_type)
+    template = client.samples.get_annotation_template(SampleTypeId(args.sample_type))
     try:
         destination.write_bytes(template)
     except OSError as error:
@@ -310,9 +310,10 @@ def _batch_template_command(
     :param output: The result/error renderer.
     :returns: :attr:`ExitCode.SUCCESS` on success.
     """
-    _check_sample_type(client, args.sample_type)
+    sample_type = SampleTypeId(args.sample_type)
+    _check_sample_type(client, sample_type)
     columns = _template_columns(
-        client.samples.get_metadata_attributes(), args.sample_type,
+        client.samples.get_metadata_attributes(), sample_type,
     )
     header = ",".join(column.name for column in columns)
     if args.output is not None:
@@ -329,7 +330,7 @@ def _batch_template_command(
     return ExitCode.SUCCESS
 
 
-def _check_sample_type(client: Client, sample_type: str) -> None:
+def _check_sample_type(client: Client, sample_type: SampleTypeId) -> None:
     identifiers = [sample.identifier for sample in client.samples.get_types()]
     if sample_type not in identifiers:
         raise CliUsageError(
@@ -339,7 +340,7 @@ def _check_sample_type(client: Client, sample_type: str) -> None:
 
 
 def _template_columns(
-    attributes: list[MetadataAttribute], sample_type: str,
+    attributes: list[MetadataAttribute], sample_type: SampleTypeId,
 ) -> list[_TemplateColumn]:
     columns = list(_RESERVED_COLUMNS)
     for attribute in attributes:
