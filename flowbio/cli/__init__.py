@@ -4,7 +4,7 @@ A thin presentation layer over :mod:`flowbio.v2` that exposes the upload
 operations from the terminal for both humans (concise lines) and automated
 agents (``--json`` output with stable exit codes).
 
-The public surface is the command line itself, documented in ``docs/cli.md``;
+The public surface is the command line itself, documented in ``source/cli.rst``;
 the package's only public Python symbol is :func:`main`, the console-script
 entry point. All modules are internal: domain command modules
 (:mod:`flowbio.cli._data`, :mod:`flowbio.cli._samples`) are imported only by the

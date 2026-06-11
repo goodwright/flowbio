@@ -38,7 +38,8 @@ Use comments sparingly.
 
 ## CLI (`flowbio/cli`)
 
-- User docs (`docs/cli.md`) should not duplicate `--help` output. Keep the docs
+- User docs (`source/cli.rst`, in the Sphinx tree) should not duplicate
+  `--help` output. Keep the docs
   to concepts (authentication precedence, output modes, the exit-code contract)
   plus a worked example per command, and let `--help` carry the exhaustive
   per-option list.

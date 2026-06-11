@@ -34,11 +34,34 @@ under active development. The :class:`legacy client <flowbio.Client>` is
 being phased out but remains available for functionality not yet covered
 by v2.
 
+Command-line interface
+----------------------
+
+The same upload operations are available from the terminal via the ``flowbio``
+command, for both interactive use and automated agents (``--json`` output with
+stable exit codes). Log in once and your token is reused on later calls::
+
+    # Upload a single demultiplexed sample
+    flowbio samples upload --name liver_r1 --sample-type rna_seq \
+        --reads1 ./liver_R1.fastq.gz --reads2 ./liver_R2.fastq.gz \
+        --metadata strandedness=reverse
+
+    # Upload a generic data file, with machine-readable output
+    flowbio data upload ./counts.tsv --json
+
+    # Upload many samples from a CSV sample sheet
+    flowbio samples batch-template --sample-type rna_seq -o samples.csv
+    flowbio samples upload-batch --sheet samples.csv --sample-type rna_seq
+
+See :doc:`cli` for authentication, output modes, the exit-code contract, and a
+worked example per command.
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
    Home <self>
    v2/index
+   cli
    legacy
    faq
