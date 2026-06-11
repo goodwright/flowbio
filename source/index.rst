@@ -11,7 +11,7 @@ Install with pip::
 
     pip install flowbio
 
-Requires Python 3.8+. Dependencies (``requests``, ``pydantic``, ``tqdm``, etc.)
+Requires Python 3.11+. Dependencies (``requests``, ``pydantic``, ``tqdm``, etc.)
 are installed automatically.
 
 Overview
