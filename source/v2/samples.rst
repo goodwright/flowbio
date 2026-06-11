@@ -103,7 +103,7 @@ get a pre-formatted spreadsheet for your sample type::
 
     from pathlib import Path
 
-    template = client.samples.get_annotation_template("rna_seq")
+    template = client.samples.get_annotation_template("RNA-Seq")
     Path("annotation_template.xlsx").write_bytes(template)
 
 Open the file in a spreadsheet editor, fill in one row per sample, and save

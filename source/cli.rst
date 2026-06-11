@@ -167,12 +167,12 @@ authentication failure; otherwise the standard mapping above.
 
 .. code-block:: bash
 
-    $ flowbio samples upload --name liver_r1 --sample-type rna_seq \
+    $ flowbio samples upload --name liver_r1 --sample-type RNA-Seq \
         --reads1 ./liver_R1.fastq.gz --reads2 ./liver_R2.fastq.gz \
         --metadata strandedness=reverse
     Uploaded sample samp_abc
 
-    $ flowbio samples upload --name liver_r1 --sample-type rna_seq \
+    $ flowbio samples upload --name liver_r1 --sample-type RNA-Seq \
         --reads1 ./liver_R1.fastq.gz --json
     {"id": "samp_abc"}
 
@@ -210,11 +210,11 @@ standard mapping above.
 
 .. code-block:: bash
 
-    $ flowbio samples annotation-template --sample-type rna_seq -o sheet.xlsx
-    Wrote rna_seq annotation template to sheet.xlsx
+    $ flowbio samples annotation-template --sample-type RNA-Seq -o sheet.xlsx
+    Wrote RNA-Seq annotation template to sheet.xlsx
 
-    $ flowbio samples annotation-template --sample-type rna_seq -o sheet.xlsx --json
-    {"output": "sheet.xlsx", "sample_type": "rna_seq"}
+    $ flowbio samples annotation-template --sample-type RNA-Seq -o sheet.xlsx --json
+    {"output": "sheet.xlsx", "sample_type": "RNA-Seq"}
 
 ``samples upload-multiplexed``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -296,10 +296,10 @@ failure; otherwise the standard mapping above.
 
 .. code-block:: bash
 
-    $ flowbio samples batch-template --sample-type rna_seq
+    $ flowbio samples batch-template --sample-type RNA-Seq
     name,reads1,reads2,project,organism,cell_type,source,source__annotation
 
-    $ flowbio samples batch-template --sample-type rna_seq --json
+    $ flowbio samples batch-template --sample-type RNA-Seq --json
     [{"name": "name", "kind": "reserved", "required": true, "options": null, "description": "..."}, ...]
 
 ``samples upload-batch``
@@ -359,10 +359,10 @@ authentication failure; otherwise the standard mapping above.
 
 .. code-block:: bash
 
-    $ flowbio samples upload-batch --sheet ./samples.csv --sample-type rna_seq
+    $ flowbio samples upload-batch --sheet ./samples.csv --sample-type RNA-Seq
     Row 1 (liver_r1): uploaded samp_1
     Row 2 (liver_r2): uploaded samp_2
     Uploaded 2, failed 0, skipped 0.
 
-    $ flowbio samples upload-batch --sheet ./samples.csv --sample-type rna_seq --json
+    $ flowbio samples upload-batch --sheet ./samples.csv --sample-type RNA-Seq --json
     {"uploaded": [{"row_number": 1, "name": "liver_r1", "sample_id": "samp_1"}], "failed": [], "skipped": [], "counts": {"uploaded": 1, "failed": 0, "skipped": 0}}

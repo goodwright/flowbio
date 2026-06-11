@@ -42,7 +42,7 @@ command, for both interactive use and automated agents (``--json`` output with
 stable exit codes). Log in once and your token is reused on later calls::
 
     # Upload a single demultiplexed sample
-    flowbio samples upload --name liver_r1 --sample-type rna_seq \
+    flowbio samples upload --name liver_r1 --sample-type RNA-Seq \
         --reads1 ./liver_R1.fastq.gz --reads2 ./liver_R2.fastq.gz \
         --metadata strandedness=reverse
 
@@ -50,8 +50,8 @@ stable exit codes). Log in once and your token is reused on later calls::
     flowbio data upload ./counts.tsv --json
 
     # Upload many samples from a CSV sample sheet
-    flowbio samples batch-template --sample-type rna_seq -o samples.csv
-    flowbio samples upload-batch --sheet samples.csv --sample-type rna_seq
+    flowbio samples batch-template --sample-type RNA-Seq -o samples.csv
+    flowbio samples upload-batch --sheet samples.csv --sample-type RNA-Seq
 
 See :doc:`cli` for authentication, output modes, the exit-code contract, and a
 worked example per command.
