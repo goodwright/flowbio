@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from importlib.metadata import PackageNotFoundError, version
 
+from flowbio.cli._api import register as register_api
 from flowbio.cli._data import register as register_data
 from flowbio.cli._samples import register as register_samples
 
@@ -54,6 +55,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     samples_parser.set_defaults(command_parser=samples_parser)
     register_samples(samples_parser, global_parent)
+
+    api_parser = resources.add_parser(
+        "api",
+        parents=[global_parent],
+        help="Read-only API access (arbitrary GET passthrough).",
+        description="Issue read-only GET requests to the Flow API.",
+    )
+    api_parser.set_defaults(command_parser=api_parser)
+    register_api(api_parser, global_parent)
 
     return parser
 
