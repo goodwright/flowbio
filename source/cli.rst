@@ -12,8 +12,8 @@ CLI does, the library can do programmatically.
     flowbio --version
     flowbio [--help | <resource> --help | <resource> <verb> --help]
 
-Resources are ``data`` and ``samples``. Run ``flowbio --help``, ``flowbio
-<resource> --help``, or ``flowbio <resource> <verb> --help`` for
+Resources are ``data``, ``samples``, and ``api``. Run ``flowbio --help``,
+``flowbio <resource> --help``, or ``flowbio <resource> <verb> --help`` for
 self-documenting usage at every level.
 
 Authentication
@@ -366,3 +366,35 @@ authentication failure; otherwise the standard mapping above.
 
     $ flowbio samples upload-batch --sheet ./samples.csv --sample-type RNA-Seq --json
     {"uploaded": [{"row_number": 1, "name": "liver_r1", "sample_id": "samp_1"}], "failed": [], "skipped": [], "counts": {"uploaded": 1, "failed": 0, "skipped": 0}}
+
+``api get``
+~~~~~~~~~~~
+
+Issue an authenticated ``GET`` to any path under the Flow API base URL and
+print the raw response body to stdout. It is a read-only passthrough — it
+never changes remote state.
+
+::
+
+    flowbio api get PATH [--param KEY=VALUE ...]
+
+Query values are supplied only through ``--param`` (repeatable), which
+URL-encodes each value; a ``?`` in ``PATH`` is rejected as a usage error
+directing you to ``--param`` instead. Credentials follow the standard
+precedence above — with a token file at ``~/.config/flow/api-token``, no
+flags are needed.
+
+**Output** — the response body is written verbatim to stdout in both human
+and ``--json`` mode; ``--json`` does not reshape a successful response.
+
+**Exit codes** — ``0`` success; ``4`` not found; ``5`` bad request; ``3``
+authentication failure; otherwise the standard mapping above. Under
+``--json``, a failure writes ``{"message": ..., "status_code": ...}`` to
+stderr.
+
+**Example**
+
+.. code-block:: console
+
+    $ flowbio api get /samples/search --param name=rna-seq --param count=100 | jq '.count'
+    42
