@@ -23,7 +23,12 @@ from typing import Mapping
 
 from flowbio.cli._exit_codes import CliUsageError
 from flowbio.cli._types import BaseUrl, Token
-from flowbio.v2.auth import Credentials, TokenCredentials, UsernamePasswordCredentials
+from flowbio.v2.auth import (
+    AnonymousCredentials,
+    Credentials,
+    TokenCredentials,
+    UsernamePasswordCredentials,
+)
 
 DEFAULT_BASE_URL = BaseUrl("https://app.flow.bio/api")
 DEFAULT_TOKEN_FILE = Path.home() / ".config" / "flow" / "api-token"
@@ -44,6 +49,7 @@ def resolve_credentials(
     base_url: BaseUrl | None,
     force_login: bool,
     username: str | None,
+    allow_anonymous: bool = False,
     env: Mapping[str, str] | None = None,
 ) -> ResolvedCredentials:
     """Resolve credentials and the base URL from CLI inputs and the environment.
@@ -51,8 +57,10 @@ def resolve_credentials(
     Credential precedence (highest first): ``force_login`` → ``--token`` /
     ``FLOW_API_TOKEN`` → ``--token-file`` / ``FLOW_TOKEN_FILE`` → the default
     token file (``~/.config/flow/api-token``) → an interactive
-    username/password prompt. Base URL: ``--base-url`` > ``FLOW_API_URL`` >
-    the library default.
+    username/password prompt. When ``allow_anonymous`` is set, the final step
+    yields anonymous (unauthenticated) credentials instead of prompting, so a
+    read command can serve public data without a token. Base URL:
+    ``--base-url`` > ``FLOW_API_URL`` > the library default.
 
     :param token: A token supplied via ``--token``.
     :param token_file: A token-file path supplied via ``--token-file``.
@@ -60,6 +68,8 @@ def resolve_credentials(
     :param force_login: Whether ``--login`` forced username/password auth.
     :param username: A username supplied via ``--username`` (password is always
         prompted).
+    :param allow_anonymous: Whether to fall back to anonymous credentials when
+        no token is available, rather than prompting or failing.
     :param env: Environment mapping to read (defaults to ``os.environ``).
     :returns: The resolved credentials and base URL.
     :raises CliUsageError: On conflicting flags, a missing/empty named token
@@ -79,7 +89,7 @@ def resolve_credentials(
     resolved_token_file = token_file or _env_path(environment.get("FLOW_TOKEN_FILE"))
 
     credentials = _resolve_strategy(
-        resolved_token, resolved_token_file, force_login, username,
+        resolved_token, resolved_token_file, force_login, username, allow_anonymous,
     )
     return ResolvedCredentials(credentials=credentials, base_url=resolved_base_url)
 
@@ -89,6 +99,7 @@ def _resolve_strategy(
     token_file: Path | None,
     force_login: bool,
     username: str | None,
+    allow_anonymous: bool,
 ) -> Credentials:
     if force_login:
         return _prompt_for_credentials(username)
@@ -99,6 +110,8 @@ def _resolve_strategy(
     default_token = _read_token_file(DEFAULT_TOKEN_FILE)
     if default_token:
         return TokenCredentials(default_token)
+    if allow_anonymous:
+        return AnonymousCredentials()
     return _prompt_for_credentials(username)
 
 

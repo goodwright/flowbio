@@ -2,11 +2,20 @@ import json
 from http import HTTPStatus
 
 import httpx
+import pytest
 import respx
 
+from flowbio.cli import _auth
 from tests.unit.cli.conftest import DEFAULT_BASE_URL
 
 TOKEN = "test.token"
+
+
+@pytest.fixture
+def no_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_auth, "DEFAULT_TOKEN_FILE", _auth.Path("/nonexistent/api-token"))
+    monkeypatch.delenv("FLOW_API_TOKEN", raising=False)
+    monkeypatch.delenv("FLOW_TOKEN_FILE", raising=False)
 
 
 class TestApiGet:
@@ -65,6 +74,19 @@ class TestApiGet:
         items = route.calls[0].request.url.params.multi_items()
         assert ("sample_types", "rna") in items
         assert ("sample_types", "atac") in items
+
+    @respx.mock
+    def test_reads_anonymously_when_no_token(self, run_cli, no_credentials) -> None:
+        body = '{"count": 3}'
+        route = respx.get(f"{DEFAULT_BASE_URL}/pipelines").mock(
+            return_value=httpx.Response(HTTPStatus.OK, text=body),
+        )
+
+        result = run_cli("api", "get", "/pipelines")
+
+        assert result.exit_code == 0
+        assert result.stdout == body
+        assert "authorization" not in route.calls[0].request.headers
 
     @respx.mock
     def test_sends_bearer_token(self, run_cli) -> None:

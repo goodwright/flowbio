@@ -1,9 +1,10 @@
 """The ``flowbio api`` command group — read-only API passthrough.
 
-A single ``api get <path>`` verb issues an authenticated GET to an
-arbitrary path under the configured base URL and writes the response body
-to stdout verbatim, so a caller can pipe it straight through ``jq``. The
-command is GET-only by construction, so it cannot mutate remote state.
+A single ``api get <path>`` verb issues a GET to an arbitrary path under the
+configured base URL and writes the response body to stdout verbatim, so a
+caller can pipe it straight through ``jq``. It uses a token when one is
+available and otherwise reads anonymously. The command is GET-only by
+construction, so it cannot mutate remote state.
 """
 from __future__ import annotations
 
@@ -24,11 +25,12 @@ def register(
         parents=[global_parent],
         help="Issue a GET to an API path and print the raw response body.",
         description=(
-            "Issue an authenticated GET to a path under the Flow API base URL "
-            "and write the raw response body to stdout."
+            "Issue a GET to a path under the Flow API base URL and write the "
+            "raw response body to stdout. Uses a token when one is available, "
+            "otherwise reads anonymously (public resources only)."
         ),
     )
-    get.set_defaults(command_parser=get, handler=_get_command)
+    get.set_defaults(command_parser=get, handler=_get_command, allow_anonymous=True)
     get.add_argument(
         "path",
         metavar="PATH",

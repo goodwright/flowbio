@@ -32,7 +32,11 @@ Create a client, log in, and upload a sample::
     data = client.data.upload_data(Path("counts.tsv"))
     print(f"Uploaded data {data.id}")
 """
-from flowbio.v2.auth import TokenCredentials, UsernamePasswordCredentials
+from flowbio.v2.auth import (
+    AnonymousCredentials,
+    TokenCredentials,
+    UsernamePasswordCredentials,
+)
 from flowbio.v2.client import Client, ClientConfig
 from flowbio.v2.data import Data
 from flowbio.v2.exceptions import AnnotationValidationError
@@ -48,6 +52,7 @@ from flowbio.v2.samples import (
 
 __all__ = [
     "AnnotationValidationError",
+    "AnonymousCredentials",
     "Client",
     "ClientConfig",
     "Data",

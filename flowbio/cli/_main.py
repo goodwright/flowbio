@@ -77,6 +77,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             base_url=options.base_url,
             force_login=options.force_login,
             username=options.username,
+            allow_anonymous=getattr(args, "allow_anonymous", False),
         )
         client = Client(
             base_url=resolved.base_url,

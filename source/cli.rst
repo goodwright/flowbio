@@ -370,9 +370,9 @@ authentication failure; otherwise the standard mapping above.
 ``api get``
 ~~~~~~~~~~~
 
-Issue an authenticated ``GET`` to any path under the Flow API base URL and
-print the raw response body to stdout. It is a read-only passthrough — it
-never changes remote state.
+Issue a ``GET`` to any path under the Flow API base URL and print the raw
+response body to stdout. It is a read-only passthrough — it never changes
+remote state.
 
 ::
 
@@ -380,9 +380,14 @@ never changes remote state.
 
 Query values are supplied only through ``--param`` (repeatable), which
 URL-encodes each value; a ``?`` in ``PATH`` is rejected as a usage error
-directing you to ``--param`` instead. Credentials follow the standard
-precedence above — with a token file at ``~/.config/flow/api-token``, no
-flags are needed.
+directing you to ``--param`` instead.
+
+Unlike the upload commands, ``api get`` does not require credentials. When a
+token is available it is used (following the standard precedence above — with
+a token file at ``~/.config/flow/api-token``, no flags are needed) and the
+response includes any private resources you can see; when no token is
+present, the request is made anonymously and returns only public resources.
+Pass ``--login`` to force authentication.
 
 **Output** — the response body is written verbatim to stdout in both human
 and ``--json`` mode; ``--json`` does not reshape a successful response.

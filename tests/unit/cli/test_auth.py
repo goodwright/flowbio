@@ -6,12 +6,19 @@ from flowbio.cli import _auth
 from flowbio.cli._auth import DEFAULT_BASE_URL, resolve_credentials
 from flowbio.cli._exit_codes import CliUsageError
 from flowbio.cli._types import BaseUrl, Token
-from flowbio.v2.auth import TokenCredentials, UsernamePasswordCredentials
+from flowbio.v2.auth import (
+    AnonymousCredentials,
+    TokenCredentials,
+    UsernamePasswordCredentials,
+)
 
 MISSING_DEFAULT_FILE = Path("/nonexistent/flow/api-token")
 
 
-def _resolve(*, token=None, token_file=None, base_url=None, login=False, username=None, env={}):
+def _resolve(
+    *, token=None, token_file=None, base_url=None, login=False, username=None,
+    allow_anonymous=False, env={},
+):
     # Mirror the CLI boundary: raw strings become the named types before
     # reaching resolve_credentials. `login` maps to the force_login parameter.
     return resolve_credentials(
@@ -20,6 +27,7 @@ def _resolve(*, token=None, token_file=None, base_url=None, login=False, usernam
         base_url=BaseUrl(base_url) if base_url is not None else None,
         force_login=login,
         username=username,
+        allow_anonymous=allow_anonymous,
         env=env,
     )
 
@@ -99,6 +107,52 @@ class TestTokenPrecedence:
         resolved = _resolve()
 
         _assert_token(resolved.credentials, "default.token")
+
+
+class TestAnonymousFallback:
+
+    def test_falls_back_to_anonymous_when_no_token(
+        self, no_default_token_file: None,
+    ) -> None:
+        resolved = _resolve(allow_anonymous=True)
+
+        assert isinstance(resolved.credentials, AnonymousCredentials)
+
+    def test_token_still_wins_over_anonymous(self) -> None:
+        flag_token = "flag.token"
+
+        resolved = _resolve(token=flag_token, allow_anonymous=True)
+
+        _assert_token(resolved.credentials, flag_token)
+
+    def test_default_token_file_still_wins_over_anonymous(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        default_file = tmp_path / "api-token"
+        default_file.write_text("default.token")
+        monkeypatch.setattr(_auth, "DEFAULT_TOKEN_FILE", default_file)
+
+        resolved = _resolve(allow_anonymous=True)
+
+        _assert_token(resolved.credentials, "default.token")
+
+    def test_login_still_prompts_even_when_anonymous_allowed(
+        self, interactive: None, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(_auth, "_prompt_username", lambda: "alice")
+        monkeypatch.setattr(_auth, "_prompt_password", lambda: "s3cret")
+
+        resolved = _resolve(login=True, allow_anonymous=True)
+
+        assert isinstance(resolved.credentials, UsernamePasswordCredentials)
+
+    def test_named_token_file_missing_is_still_usage_error(
+        self, tmp_path: Path,
+    ) -> None:
+        missing = tmp_path / "does-not-exist"
+
+        with pytest.raises(CliUsageError):
+            _resolve(token_file=str(missing), allow_anonymous=True)
 
 
 class TestLoginPrecedence:
