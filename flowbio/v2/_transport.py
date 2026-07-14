@@ -172,8 +172,8 @@ class HttpTransport:
     ) -> str:
         """Send a GET request and return the raw response body as text.
 
-        Unlike :meth:`get`, the body is returned undecoded from JSON so
-        callers can pass it through verbatim.
+        Unlike :meth:`get`, the body is returned as text without parsing it
+        as JSON, so callers can pass it through verbatim.
 
         :param path: The API path to request.
         :param params: Optional query parameters, as key/value pairs so a

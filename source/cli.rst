@@ -394,7 +394,7 @@ stderr.
 
 **Example**
 
-.. code-block:: console
+.. code-block:: bash
 
     $ flowbio api get /samples/search --param name=rna-seq --param count=100 | jq '.count'
     42
