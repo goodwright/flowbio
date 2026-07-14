@@ -167,6 +167,27 @@ class TestJsonOutput:
         assert out.getvalue() == ""
 
 
+class TestEmitRaw:
+
+    def test_writes_body_verbatim_without_added_newline(self) -> None:
+        body = '{"count": 1}'
+        stdout, stderr = io.StringIO(), io.StringIO()
+        output = Output(json_mode=False, stdout=stdout, stderr=stderr)
+
+        output.emit_raw(body)
+
+        assert stdout.getvalue() == body
+
+    def test_writes_verbatim_in_json_mode_too(self) -> None:
+        body = '{"count": 1}'
+        stdout, stderr = io.StringIO(), io.StringIO()
+        output = Output(json_mode=True, stdout=stdout, stderr=stderr)
+
+        output.emit_raw(body)
+
+        assert stdout.getvalue() == body
+
+
 class TestFormatIssue:
 
     def test_formats_row_and_message(self) -> None:
