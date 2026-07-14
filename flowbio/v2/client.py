@@ -113,3 +113,19 @@ class Client:
         :raises BadRequestError: If the credentials are invalid.
         """
         credentials.authenticate(self._transport)
+
+    def get_raw(
+        self, path: str, params: list[tuple[str, str]] | None = None,
+    ) -> str:
+        """Issue a GET to an arbitrary API path and return the raw body text.
+
+        A low-level read escape hatch used by the CLI's ``api get`` command.
+        The path is joined onto the configured base URL, so only paths on
+        that host are reachable.
+
+        :param path: API path relative to the base URL (leading slash optional).
+        :param params: Optional query parameters as key/value pairs.
+        :returns: The raw response body text.
+        :raises FlowApiError: If the API returns a non-success status code.
+        """
+        return self._transport.get_text(path, params=params)

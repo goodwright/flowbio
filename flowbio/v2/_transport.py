@@ -167,6 +167,24 @@ class HttpTransport:
         self._raise_for_error(response)
         return response.content
 
+    def get_text(
+        self, path: str, params: list[tuple[str, str]] | None = None,
+    ) -> str:
+        """Send a GET request and return the raw response body as text.
+
+        Unlike :meth:`get`, the body is returned undecoded from JSON so
+        callers can pass it through verbatim.
+
+        :param path: The API path to request.
+        :param params: Optional query parameters, as key/value pairs so a
+            key may repeat (e.g. multiple ``sample_types`` filters).
+        :returns: The response body text.
+        :raises FlowApiError: If the API returns a non-success status code.
+        """
+        response = self._request(HTTPMethod.GET, self._url(path), params=params)
+        self._raise_for_error(response)
+        return response.text
+
     def post(
         self,
         path: str,

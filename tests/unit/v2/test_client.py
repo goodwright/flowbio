@@ -161,3 +161,26 @@ class TestClientConfig:
             connection_retries=3,
             request_timeout=request_timeout,
         )
+
+
+class TestClientGetRaw:
+
+    @respx.mock
+    def test_returns_raw_body_for_path(self) -> None:
+        body = '{"count": 0, "samples": []}'
+        respx.get(f"{DEFAULT_BASE_URL}/samples/search").mock(
+            return_value=httpx.Response(200, text=body),
+        )
+
+        assert Client().get_raw("/samples/search") == body
+
+    @respx.mock
+    def test_forwards_params_as_repeatable_pairs(self) -> None:
+        route = respx.get(f"{DEFAULT_BASE_URL}/samples/search").mock(
+            return_value=httpx.Response(200, text="{}"),
+        )
+        params = [("sample_types", "rna"), ("sample_types", "atac")]
+
+        Client().get_raw("/samples/search", params=params)
+
+        assert sorted(route.calls[0].request.url.params.multi_items()) == sorted(params)

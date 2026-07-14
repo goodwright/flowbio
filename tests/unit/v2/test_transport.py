@@ -444,6 +444,42 @@ class TestTransportGetBytes:
         assert exc_info.value.message == error_message
 
 
+class TestTransportGetText:
+
+    @respx.mock
+    def test_returns_raw_response_body_verbatim(self) -> None:
+        body = '{"count": 2, "pipelines": [1, 2]}'
+        respx.get(f"{DEFAULT_BASE_URL}/pipelines").mock(
+            return_value=httpx.Response(HTTPStatus.OK, text=body),
+        )
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        assert transport.get_text("/pipelines") == body
+
+    @respx.mock
+    def test_encodes_params_into_query_string(self) -> None:
+        route = respx.get(f"{DEFAULT_BASE_URL}/samples/search").mock(
+            return_value=httpx.Response(HTTPStatus.OK, text="{}"),
+        )
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        transport.get_text("/samples/search", params=[("name", "rna seq")])
+
+        assert route.calls[0].request.url.params.get("name") == "rna seq"
+
+    @respx.mock
+    def test_raises_flow_api_error_on_non_success(self) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/nope").mock(
+            return_value=httpx.Response(
+                HTTPStatus.NOT_FOUND, json={"error": "missing"},
+            ),
+        )
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(NotFoundError):
+            transport.get_text("/nope")
+
+
 class TestTransportTokenManagement:
 
     @respx.mock
