@@ -81,6 +81,17 @@ class Output:
             for detail in details or []:
                 print(f"  {format_issue(detail)}", file=self.stderr)
 
+    def emit_raw(self, body: str) -> None:
+        """Write a response body to stdout verbatim.
+
+        Used for passthrough output where the body is already the exact
+        bytes to surface: no newline is appended and ``json_mode`` does not
+        reshape it.
+
+        :param body: The text to write to stdout unchanged.
+        """
+        self.stdout.write(body)
+
 
 def format_issue(issue: JsonValue) -> str:
     """Render a Flow ``{row, message}`` issue dict as a readable line.
