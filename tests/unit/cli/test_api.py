@@ -89,6 +89,19 @@ class TestApiGet:
         assert "authorization" not in route.calls[0].request.headers
 
     @respx.mock
+    def test_param_with_empty_value_is_sent(self, run_cli) -> None:
+        route = respx.get(f"{DEFAULT_BASE_URL}/samples/search").mock(
+            return_value=httpx.Response(HTTPStatus.OK, text="{}"),
+        )
+
+        result = run_cli(
+            "api", "get", "/samples/search", "--param", "name=", "--token", TOKEN,
+        )
+
+        assert result.exit_code == 0
+        assert route.calls[0].request.url.params.get("name") == ""
+
+    @respx.mock
     def test_sends_bearer_token(self, run_cli) -> None:
         route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(
             return_value=httpx.Response(HTTPStatus.OK, text="{}"),
