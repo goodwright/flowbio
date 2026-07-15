@@ -88,7 +88,11 @@ class AnonymousCredentials(Credentials):
     """
 
     def authenticate(self, transport: HttpTransport) -> None:
-        """Do nothing — leave the transport without an ``Authorization`` header.
+        """Attach no token, leaving the transport unchanged.
+
+        A fresh transport therefore sends no ``Authorization`` header. This
+        does not clear a token already set on a reused transport; construct a
+        new client for an anonymous request.
 
         :param transport: The HTTP transport (left unchanged).
         """

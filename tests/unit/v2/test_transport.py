@@ -638,6 +638,23 @@ class TestTransportRefreshOnUnauthorized:
         assert me_route.call_count == 1
 
     @respx.mock
+    def test_anonymous_401_does_not_attempt_refresh(self) -> None:
+        me_route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            return_value=httpx.Response(401, json={"error": "Not authorized"}),
+        )
+        token_route = respx.get(f"{DEFAULT_BASE_URL}/token").mock(
+            return_value=httpx.Response(200, json={"token": "unused.jwt", "user": {}}),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(AuthenticationError):
+            transport.get_text("/me")
+
+        assert not token_route.called
+        assert me_route.call_count == 1
+
+    @respx.mock
     def test_refresh_sends_cookie_set_by_login(self) -> None:
         refresh_cookie = "refresh-cookie-from-login"
         respx.post(f"{DEFAULT_BASE_URL}/login").mock(
