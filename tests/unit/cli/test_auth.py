@@ -3,11 +3,14 @@ from pathlib import Path
 import pytest
 
 from flowbio.cli import _auth
-from flowbio.cli._auth import DEFAULT_BASE_URL, resolve_credentials
+from flowbio.cli._auth import (
+    DEFAULT_BASE_URL,
+    _AnonymousCredentials,
+    resolve_credentials,
+)
 from flowbio.cli._exit_codes import CliUsageError
 from flowbio.cli._types import BaseUrl, Token
 from flowbio.v2.auth import (
-    AnonymousCredentials,
     TokenCredentials,
     UsernamePasswordCredentials,
 )
@@ -116,7 +119,7 @@ class TestAnonymousFallback:
     ) -> None:
         resolved = _resolve(allow_anonymous=True)
 
-        assert isinstance(resolved.credentials, AnonymousCredentials)
+        assert isinstance(resolved.credentials, _AnonymousCredentials)
 
     def test_token_still_wins_over_anonymous(self) -> None:
         flag_token = "flag.token"

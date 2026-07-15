@@ -6,7 +6,6 @@ import respx
 
 from flowbio.v2._transport import HttpTransport
 from flowbio.v2.auth import (
-    AnonymousCredentials,
     Credentials,
     TokenCredentials,
     UsernamePasswordCredentials,
@@ -115,33 +114,5 @@ class TestTokenCredentials:
         transport = HttpTransport(DEFAULT_BASE_URL)
         credentials = TokenCredentials(token="some.jwt.token")
         credentials.authenticate(transport)
-
-        assert spy_route.call_count == 0
-
-
-class TestAnonymousCredentials:
-
-    def test_is_credentials_subclass(self) -> None:
-        assert isinstance(AnonymousCredentials(), Credentials)
-
-    @respx.mock
-    def test_authenticate_attaches_no_authorization_header(self) -> None:
-        verify_route = respx.get(f"{DEFAULT_BASE_URL}/pipelines").mock(
-            return_value=httpx.Response(200, json=[]),
-        )
-
-        transport = HttpTransport(DEFAULT_BASE_URL)
-        AnonymousCredentials().authenticate(transport)
-        transport.get("/pipelines")
-
-        assert "authorization" not in verify_route.calls[0].request.headers
-
-    @respx.mock
-    def test_authenticate_makes_no_http_requests(self) -> None:
-        spy_route = respx.route().mock(
-            return_value=httpx.Response(200, json={}),
-        )
-
-        AnonymousCredentials().authenticate(HttpTransport(DEFAULT_BASE_URL))
 
         assert spy_route.call_count == 0

@@ -19,19 +19,34 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping
 
 from flowbio.cli._exit_codes import CliUsageError
 from flowbio.cli._types import BaseUrl, Token
 from flowbio.v2.auth import (
-    AnonymousCredentials,
     Credentials,
     TokenCredentials,
     UsernamePasswordCredentials,
 )
 
+if TYPE_CHECKING:
+    from flowbio.v2._transport import HttpTransport
+
 DEFAULT_BASE_URL = BaseUrl("https://app.flow.bio/api")
 DEFAULT_TOKEN_FILE = Path.home() / ".config" / "flow" / "api-token"
+
+
+class _AnonymousCredentials(Credentials):
+    """A no-op strategy that attaches no token, for reads that need no identity.
+
+    Anonymous access is a CLI policy (the read commands fall back to it when no
+    token is configured), not a library concern — a client sends no
+    ``Authorization`` header until one is set — so it lives here rather than in
+    the public ``flowbio.v2.auth`` API.
+    """
+
+    def authenticate(self, transport: HttpTransport) -> None:
+        """Leave the transport unchanged."""
 
 
 @dataclass(frozen=True)
@@ -111,7 +126,7 @@ def _resolve_strategy(
     if default_token:
         return TokenCredentials(default_token)
     if allow_anonymous:
-        return AnonymousCredentials()
+        return _AnonymousCredentials()
     return _prompt_for_credentials(username)
 
 
