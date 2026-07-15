@@ -72,32 +72,6 @@ class TokenCredentials(Credentials):
         transport.set_token(self._token)
 
 
-class AnonymousCredentials(Credentials):
-    """Makes unauthenticated requests — no token is attached.
-
-    Flow serves public resources without authentication, so a read that
-    does not need a caller identity can proceed anonymously.
-
-    :example:
-
-        from flowbio.v2 import Client
-        from flowbio.v2.auth import AnonymousCredentials
-
-        client = Client()
-        client.log_in(AnonymousCredentials())
-    """
-
-    def authenticate(self, transport: HttpTransport) -> None:
-        """Attach no token, leaving the transport unchanged.
-
-        A fresh transport therefore sends no ``Authorization`` header. This
-        does not clear a token already set on a reused transport; construct a
-        new client for an anonymous request.
-
-        :param transport: The HTTP transport (left unchanged).
-        """
-
-
 class UsernamePasswordCredentials(Credentials):
     """Authenticates to the Flow API with a username and password.
 

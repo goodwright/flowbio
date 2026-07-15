@@ -33,7 +33,6 @@ Create a client, log in, and upload a sample::
     print(f"Uploaded data {data.id}")
 """
 from flowbio.v2.auth import (
-    AnonymousCredentials,
     TokenCredentials,
     UsernamePasswordCredentials,
 )
@@ -52,7 +51,6 @@ from flowbio.v2.samples import (
 
 __all__ = [
     "AnnotationValidationError",
-    "AnonymousCredentials",
     "Client",
     "ClientConfig",
     "Data",
