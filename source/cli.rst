@@ -389,13 +389,15 @@ response includes any private resources you can see; when no token is
 present, the request is made anonymously and returns only public resources.
 Pass ``--login`` to force authentication.
 
-**Output** — the response body is written verbatim to stdout in both human
-and ``--json`` mode; ``--json`` does not reshape a successful response.
+**Output** — a successful response body is written verbatim to **stdout** in
+both human and ``--json`` mode; ``--json`` does not reshape it. Errors always
+go to **stderr** (never stdout, so a piped stdout stays clean) regardless of
+mode: by default as an ``Error: <message>`` line, or — under ``--json`` — as a
+``{"message": ..., "status_code": ...}`` document.
 
-**Exit codes** — ``0`` success; ``4`` not found; ``5`` bad request; ``3``
-authentication failure; otherwise the standard mapping above. Under
-``--json``, a failure writes ``{"message": ..., "status_code": ...}`` to
-stderr.
+**Exit codes** — ``0`` success; ``2`` usage error (e.g. a ``?`` in ``PATH``);
+``3`` authentication failure; ``4`` not found; ``5`` bad request; otherwise the
+standard mapping above.
 
 **Example**
 
