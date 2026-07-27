@@ -195,6 +195,11 @@ class SampleImportJob(BaseModel, frozen=True):
 
     id: SampleImportJobId = Field(description="Unique identifier for this import job.")
     status: SampleImportStatus = Field(description="The job's current lifecycle state.")
+    created: int = Field(description="Unix timestamp when the job was created.")
+    started: int | None = Field(default=None, description="Unix timestamp when the job started running, if it has.")
+    finished: int | None = Field(
+        default=None, description="Unix timestamp when the job finished (completed or failed), if it has.",
+    )
     accessions: list[str] = Field(description="The accessions submitted with this job, in submission order.")
     sample_ids: list[int] = Field(
         description="The created samples' ids, corresponding to ``accessions`` once the job has completed.",

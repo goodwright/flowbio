@@ -1082,6 +1082,9 @@ class TestImportSamples:
         assert result == SampleImportJob(
             id=SampleImportJobId(42),
             status="RUNNING",
+            created=1700000000,
+            started=None,
+            finished=None,
             accessions=["ERR1160845"],
             sample_ids=[],
             execution_id=None,
@@ -1093,7 +1096,7 @@ class TestImportSamples:
     def test_sends_accession_and_sample_type(self) -> None:
         route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json={
-                "id": 1, "status": "RUNNING", "accessions": ["ERR1"],
+                "id": 1, "status": "RUNNING", "created": 1700000000, "accessions": ["ERR1"],
                 "sample_ids": [], "execution_id": None, "error": None,
             }),
         )
@@ -1112,7 +1115,7 @@ class TestImportSamples:
     def test_sends_optional_fields_when_present(self) -> None:
         route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json={
-                "id": 1, "status": "RUNNING", "accessions": ["ERR1"],
+                "id": 1, "status": "RUNNING", "created": 1700000000, "accessions": ["ERR1"],
                 "sample_ids": [], "execution_id": None, "error": None,
             }),
         )
@@ -1143,7 +1146,7 @@ class TestImportSamples:
     def test_sends_multiple_imports_in_one_request(self) -> None:
         route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json={
-                "id": 1, "status": "RUNNING", "accessions": ["ERR1", "ERR2"],
+                "id": 1, "status": "RUNNING", "created": 1700000000, "accessions": ["ERR1", "ERR2"],
                 "sample_ids": [], "execution_id": None, "error": None,
             }),
         )
@@ -1199,6 +1202,9 @@ class TestGetImport:
         assert result == SampleImportJob(
             id=SampleImportJobId(42),
             status="COMPLETED",
+            created=1700000000,
+            started=1700000001,
+            finished=1700000002,
             accessions=["ERR1160845", "ERR10677146"],
             sample_ids=[101, 102],
             execution_id=7,
@@ -1211,6 +1217,9 @@ class TestGetImport:
             return_value=httpx.Response(HTTPStatus.OK, json={
                 "id": 42,
                 "status": "FAILED",
+                "created": 1700000000,
+                "started": 1700000001,
+                "finished": 1700000002,
                 "accessions": ["ERR1160845"],
                 "sample_ids": [],
                 "execution_id": 7,
