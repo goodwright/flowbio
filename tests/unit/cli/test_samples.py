@@ -1,9 +1,7 @@
 import csv
-import itertools
 import json
 from http import HTTPStatus
 from pathlib import Path
-from unittest.mock import patch
 
 import httpx
 import respx
@@ -929,8 +927,6 @@ class TestSamplesUploadBatch:
 
 
 IMPORT_HEADERS = ["accession", "name", "organism", "cell_type", "source", "source__annotation"]
-
-
 def _write_import_sheet(directory: Path, *records: dict[str, str]) -> Path:
     path = directory / "accessions.csv"
     with path.open("w", newline="") as handle:
@@ -960,13 +956,12 @@ def _job_json(
 class TestSamplesImport:
 
     @respx.mock
-    def test_completed_job_reports_imported_samples(
+    def test_kicks_off_job_and_reports_id_without_waiting(
         self, run_cli, tmp_path: Path,
     ) -> None:
-        _mock_metadata()
-        respx.post(SAMPLE_IMPORTS_URL).mock(
+        route = respx.post(SAMPLE_IMPORTS_URL).mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "COMPLETED", ["ERR1", "ERR2"], [101, 102],
+                42, "RUNNING", ["ERR1", "ERR2"],
             )),
         )
         sheet = _write_import_sheet(
@@ -981,18 +976,17 @@ class TestSamplesImport:
         )
 
         assert result.exit_code == 0
-        assert "101" in result.stderr
-        assert "102" in result.stderr
-        assert "Imported 2, failed 0, skipped 0." in result.stdout
+        assert route.call_count == 1
+        assert "42" in result.stdout
+        assert "import-status" in result.stdout
 
     @respx.mock
-    def test_json_document_reports_outcomes_and_counts(
+    def test_json_document_reports_job_fields(
         self, run_cli, tmp_path: Path,
     ) -> None:
-        _mock_metadata()
         respx.post(SAMPLE_IMPORTS_URL).mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "COMPLETED", ["ERR1"], [101],
+                42, "RUNNING", ["ERR1"],
             )),
         )
         sheet = _write_import_sheet(tmp_path, {"accession": "ERR1", "cell_type": "Neuron"})
@@ -1005,68 +999,58 @@ class TestSamplesImport:
         assert result.exit_code == 0
         document = json.loads(result.stdout)
         assert result.stdout.count("\n") == 1
-        assert document["counts"] == {"imported": 1, "failed": 0, "skipped": 0}
-        assert document["imported"][0] == {
-            "row_number": 1, "accession": "ERR1", "sample_id": 101,
+        assert document == {
+            "id": 42,
+            "status": "RUNNING",
+            "accessions": ["ERR1"],
+            "sample_ids": [],
+            "execution_id": 7,
+            "error": None,
         }
-        assert document["job_id"] == 1
-        assert document["job_status"] == "COMPLETED"
-        assert document["execution_id"] == 7
 
     @respx.mock
-    def test_json_document_has_null_job_fields_when_nothing_submitted(
+    def test_sends_every_row_without_local_validation(
         self, run_cli, tmp_path: Path,
     ) -> None:
-        _mock_metadata()
-        route = respx.post(SAMPLE_IMPORTS_URL)
-        sheet = _write_import_sheet(
-            tmp_path, {"accession": "bogus", "cell_type": "Neuron"},
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--skip-invalid", "--json",
-        )
-
-        assert result.exit_code == 0
-        assert route.call_count == 0
-        document = json.loads(result.stdout)
-        assert document["counts"] == {"imported": 0, "failed": 0, "skipped": 1}
-        assert document["job_id"] is None
-        assert document["job_status"] is None
-        assert document["execution_id"] is None
-
-    @respx.mock
-    def test_header_only_sheet_imports_nothing_without_calling_api(
-        self, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        route = respx.post(SAMPLE_IMPORTS_URL)
-        sheet = _write_import_sheet(tmp_path)
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-        )
-
-        assert result.exit_code == 0
-        assert route.call_count == 0
-        assert "Imported 0, failed 0, skipped 0." in result.stdout
-
-    @respx.mock
-    def test_sends_sample_type_and_metadata_in_kickoff_payload(
-        self, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
+        # No metadata/sample-type endpoints are mocked: if the command called
+        # client.samples.get_metadata_attributes() or otherwise validated
+        # locally, respx would fail the test for an unmocked request.
         route = respx.post(SAMPLE_IMPORTS_URL).mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "COMPLETED", ["ERR1"], [101],
+                1, "RUNNING", ["NOT-AN-ACCESSION", "ERR1", "ERR1"],
             )),
         )
         sheet = _write_import_sheet(
-            tmp_path, {"accession": "err1", "cell_type": "Neuron", "organism": "Hs"},
+            tmp_path,
+            {"accession": "not-an-accession"},
+            {"accession": "ERR1"},
+            {"accession": "ERR1"},
         )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import",
+            "--sheet", str(sheet), "--sample-type", "rna_seq",
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(route.calls[0].request.content)
+        assert [entry["accession"] for entry in payload["imports"]] == [
+            "NOT-AN-ACCESSION", "ERR1", "ERR1",
+        ]
+
+    @respx.mock
+    def test_sends_name_organism_and_metadata_in_payload(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        route = respx.post(SAMPLE_IMPORTS_URL).mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
+                1, "RUNNING", ["ERR1"],
+            )),
+        )
+        sheet = _write_import_sheet(tmp_path, {
+            "accession": "err1", "name": "liver_r1", "organism": "Hs",
+            "cell_type": "Neuron",
+        })
 
         run_cli(
             "--token", TOKEN, "samples", "import",
@@ -1078,526 +1062,35 @@ class TestSamplesImport:
             "imports": [{
                 "accession": "ERR1",
                 "sample_type": "rna_seq",
+                "name": "liver_r1",
                 "organism": "Hs",
                 "metadata": {"cell_type": "Neuron"},
             }],
         }
 
     @respx.mock
-    def test_sends_name_in_kickoff_payload(self, run_cli, tmp_path: Path) -> None:
-        _mock_metadata()
+    def test_api_rejection_propagates_as_error(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
         route = respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "COMPLETED", ["ERR1"], [101],
-            )),
+            return_value=httpx.Response(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                json={"error": "sample type 'bogus' does not exist"},
+            ),
         )
-        sheet = _write_import_sheet(
-            tmp_path, {"accession": "ERR1", "name": "liver_r1", "cell_type": "Neuron"},
-        )
-
-        run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-        )
-
-        payload = json.loads(route.calls[0].request.content)
-        assert payload["imports"][0]["name"] == "liver_r1"
-
-    @respx.mock
-    @patch("time.sleep")
-    def test_polls_until_job_completes(
-        self, _mock_sleep, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "RUNNING", ["ERR1"],
-            )),
-        )
-        poll_route = respx.get(f"{SAMPLE_IMPORTS_URL}/1")
-        poll_route.side_effect = [
-            httpx.Response(HTTPStatus.OK, json=_job_json(1, "RUNNING", ["ERR1"])),
-            httpx.Response(HTTPStatus.OK, json=_job_json(1, "COMPLETED", ["ERR1"], [101])),
-        ]
-        sheet = _write_import_sheet(tmp_path, {"accession": "ERR1", "cell_type": "Neuron"})
+        sheet = _write_import_sheet(tmp_path, {"accession": "ERR1"})
 
         result = run_cli(
             "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--poll-interval", "1",
-        )
-
-        assert result.exit_code == 0
-        assert poll_route.call_count == 2
-        assert "101" in result.stderr
-
-    @respx.mock
-    @patch("time.sleep")
-    def test_failed_job_reports_error_message_per_row(
-        self, _mock_sleep, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        error_message = "download failed: connection reset"
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "RUNNING", ["ERR1", "ERR2"],
-            )),
-        )
-        respx.get(f"{SAMPLE_IMPORTS_URL}/1").mock(
-            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(
-                1, "FAILED", ["ERR1", "ERR2"], error=error_message,
-            )),
-        )
-        sheet = _write_import_sheet(
-            tmp_path,
-            {"accession": "ERR1", "cell_type": "Neuron"},
-            {"accession": "ERR2", "cell_type": "Neuron"},
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--poll-interval", "1",
+            "--sheet", str(sheet), "--sample-type", "bogus",
         )
 
         assert result.exit_code == 1
-        assert error_message in result.stderr
-        assert "Row 1 (ERR1)" in result.stderr
-        assert "Row 2 (ERR2)" in result.stderr
-
-    @respx.mock
-    @patch("time.monotonic")
-    @patch("time.sleep")
-    def test_timeout_reports_failure_without_hanging(
-        self, _mock_sleep, mock_monotonic, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        mock_monotonic.side_effect = itertools.count(0.0, 1.0)
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "RUNNING", ["ERR1"],
-            )),
-        )
-        poll_route = respx.get(f"{SAMPLE_IMPORTS_URL}/1").mock(
-            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(1, "RUNNING", ["ERR1"])),
-        )
-        sheet = _write_import_sheet(tmp_path, {"accession": "ERR1", "cell_type": "Neuron"})
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--poll-interval", "1", "--timeout", "3",
-        )
-
-        assert result.exit_code == 1
-        assert poll_route.call_count == 2
-        assert "Row 1 (ERR1)" in result.stderr
-        assert "did not finish within" in result.stderr
-        assert "still RUNNING" in result.stderr
-        assert "ended with status RUNNING" not in result.stderr
-
-    @respx.mock
-    @patch("time.monotonic")
-    @patch("time.sleep")
-    def test_timeout_failed_rows_have_running_status(
-        self, _mock_sleep, mock_monotonic, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        mock_monotonic.side_effect = itertools.count(0.0, 1.0)
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "RUNNING", ["ERR1"],
-            )),
-        )
-        respx.get(f"{SAMPLE_IMPORTS_URL}/1").mock(
-            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(1, "RUNNING", ["ERR1"])),
-        )
-        sheet = _write_import_sheet(tmp_path, {"accession": "ERR1", "cell_type": "Neuron"})
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--poll-interval", "1", "--timeout", "3", "--json",
-        )
-
-        assert result.exit_code == 1
-        document = json.loads(result.stdout)
-        assert document["failed"][0]["status"] == "running"
-        assert document["job_status"] == "RUNNING"
-
-    @respx.mock
-    @patch("time.monotonic")
-    @patch("time.sleep")
-    def test_poll_interval_exceeding_timeout_is_clamped(
-        self, mock_sleep, mock_monotonic, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        mock_monotonic.side_effect = itertools.count(0.0, 0.5)
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "RUNNING", ["ERR1"],
-            )),
-        )
-        respx.get(f"{SAMPLE_IMPORTS_URL}/1").mock(
-            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(1, "COMPLETED", ["ERR1"], [101])),
-        )
-        sheet = _write_import_sheet(tmp_path, {"accession": "ERR1", "cell_type": "Neuron"})
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--poll-interval", "300", "--timeout", "10",
-        )
-
-        assert result.exit_code == 0
-        mock_sleep.assert_called_once()
-        slept_for = mock_sleep.call_args[0][0]
-        assert 0 < slept_for < 300
-
-    @respx.mock
-    def test_zero_poll_interval_is_usage_error(self, run_cli, tmp_path: Path) -> None:
-        _mock_metadata()
-        route = respx.post(SAMPLE_IMPORTS_URL)
-        sheet = _write_import_sheet(tmp_path, {"accession": "ERR1", "cell_type": "Neuron"})
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--poll-interval", "0",
-        )
-
-        assert result.exit_code == 2
-        assert route.call_count == 0
-        assert "--poll-interval" in result.stderr
-
-    @respx.mock
-    def test_negative_timeout_is_usage_error(self, run_cli, tmp_path: Path) -> None:
-        _mock_metadata()
-        route = respx.post(SAMPLE_IMPORTS_URL)
-        sheet = _write_import_sheet(tmp_path, {"accession": "ERR1", "cell_type": "Neuron"})
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--timeout", "-1",
-        )
-
-        assert result.exit_code == 2
-        assert route.call_count == 0
-        assert "--timeout" in result.stderr
-
-    @respx.mock
-    def test_nan_poll_interval_is_usage_error(self, run_cli, tmp_path: Path) -> None:
-        _mock_metadata()
-        route = respx.post(SAMPLE_IMPORTS_URL)
-        sheet = _write_import_sheet(tmp_path, {"accession": "ERR1", "cell_type": "Neuron"})
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--poll-interval", "nan",
-        )
-
-        assert result.exit_code == 2
-        assert route.call_count == 0
-        assert "--poll-interval" in result.stderr
-
-    @respx.mock
-    def test_infinite_timeout_is_usage_error(self, run_cli, tmp_path: Path) -> None:
-        _mock_metadata()
-        route = respx.post(SAMPLE_IMPORTS_URL)
-        sheet = _write_import_sheet(tmp_path, {"accession": "ERR1", "cell_type": "Neuron"})
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--timeout", "inf",
-        )
-
-        assert result.exit_code == 2
-        assert route.call_count == 0
-        assert "--timeout" in result.stderr
-
-    @respx.mock
-    def test_completed_job_with_no_sample_ids_is_reported_as_unmatchable(
-        self, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "COMPLETED", ["ERR1"], [],
-            )),
-        )
-        sheet = _write_import_sheet(tmp_path, {"accession": "ERR1", "cell_type": "Neuron"})
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq", "--json",
-        )
-
-        assert result.exit_code == 1
-        document = json.loads(result.stdout)
-        assert document["imported"] == []
-        assert document["failed"][0]["accession"] == "ERR1"
-        assert document["failed"][0]["status"] == "unknown"
-        assert "cannot match" in document["failed"][0]["message"]
-        assert document["job_sample_ids"] == []
-
-    @respx.mock
-    def test_completed_job_with_matching_sample_id_missing_reports_row_as_failed(
-        self, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "COMPLETED", ["ERR1", "err-other"], [101, 102],
-            )),
-        )
-        sheet = _write_import_sheet(
-            tmp_path,
-            {"accession": "ERR1", "cell_type": "Neuron"},
-            {"accession": "ERR2", "cell_type": "Neuron"},
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq", "--json",
-        )
-
-        assert result.exit_code == 1
-        document = json.loads(result.stdout)
-        failed_by_accession = {entry["accession"]: entry for entry in document["failed"]}
-        assert document["imported"][0]["accession"] == "ERR1"
-        assert failed_by_accession["ERR2"]["status"] == "failed"
-        assert "no sample id" in failed_by_accession["ERR2"]["message"]
-
-    @respx.mock
-    def test_fewer_sample_ids_than_accessions_is_reported_as_unmatchable(
-        self, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "COMPLETED", ["ERR1", "ERR2"], [101],
-            )),
-        )
-        sheet = _write_import_sheet(
-            tmp_path,
-            {"accession": "ERR1", "cell_type": "Neuron"},
-            {"accession": "ERR2", "cell_type": "Neuron"},
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq", "--json",
-        )
-
-        assert result.exit_code == 1
-        document = json.loads(result.stdout)
-        assert document["imported"] == []
-        assert len(document["failed"]) == 2
-        for entry in document["failed"]:
-            assert entry["status"] == "unknown"
-            assert "sample_id" not in entry
-            assert "cannot match" in entry["message"]
-        assert document["job_sample_ids"] == [101]
-
-    @respx.mock
-    def test_more_sample_ids_than_accessions_is_reported_as_unmatchable(
-        self, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "COMPLETED", ["ERX1"], [101, 102],
-            )),
-        )
-        sheet = _write_import_sheet(tmp_path, {"accession": "ERX1", "cell_type": "Neuron"})
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq", "--json",
-        )
-
-        assert result.exit_code == 1
-        document = json.loads(result.stdout)
-        assert document["imported"] == []
-        assert document["failed"][0]["status"] == "unknown"
-        assert "sample_id" not in document["failed"][0]
-        assert "cannot match" in document["failed"][0]["message"]
-        assert document["job_sample_ids"] == [101, 102]
-
-    @respx.mock
-    @patch("time.sleep")
-    def test_failed_job_with_partial_sample_ids_still_surfaces_them(
-        self, _mock_sleep, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "RUNNING", ["ERR1", "ERR2"],
-            )),
-        )
-        respx.get(f"{SAMPLE_IMPORTS_URL}/1").mock(
-            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(
-                1, "FAILED", ["ERR1", "ERR2"], [101], error="download failed",
-            )),
-        )
-        sheet = _write_import_sheet(
-            tmp_path,
-            {"accession": "ERR1", "cell_type": "Neuron"},
-            {"accession": "ERR2", "cell_type": "Neuron"},
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--poll-interval", "1", "--json",
-        )
-
-        assert result.exit_code == 1
-        document = json.loads(result.stdout)
-        assert document["imported"] == []
-        for entry in document["failed"]:
-            assert entry["status"] == "unknown"
-            assert "sample_id" not in entry
-        # The job did create one sample before failing; that isn't attributable
-        # to a specific row, but it must not be silently dropped.
-        assert document["job_sample_ids"] == [101]
-
-    @respx.mock
-    @patch("time.sleep")
-    def test_failed_job_with_all_sample_ids_created_reports_them_per_row(
-        self, _mock_sleep, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "RUNNING", ["ERR1", "ERR2"],
-            )),
-        )
-        respx.get(f"{SAMPLE_IMPORTS_URL}/1").mock(
-            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(
-                1, "FAILED", ["ERR1", "ERR2"], [101, 102], error="post-processing failed",
-            )),
-        )
-        sheet = _write_import_sheet(
-            tmp_path,
-            {"accession": "ERR1", "cell_type": "Neuron"},
-            {"accession": "ERR2", "cell_type": "Neuron"},
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--poll-interval", "1", "--json",
-        )
-
-        assert result.exit_code == 1
-        document = json.loads(result.stdout)
-        failed_by_accession = {entry["accession"]: entry for entry in document["failed"]}
-        assert failed_by_accession["ERR1"]["sample_id"] == 101
-        assert failed_by_accession["ERR2"]["sample_id"] == 102
-        assert failed_by_accession["ERR1"]["status"] == "failed"
-
-    @respx.mock
-    @patch("time.sleep")
-    def test_transient_poll_error_propagates(
-        self, _mock_sleep, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "RUNNING", ["ERR1"],
-            )),
-        )
-        respx.get(f"{SAMPLE_IMPORTS_URL}/1").mock(
-            return_value=httpx.Response(HTTPStatus.NOT_FOUND, json={"error": "gone"}),
-        )
-        sheet = _write_import_sheet(tmp_path, {"accession": "ERR1", "cell_type": "Neuron"})
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--poll-interval", "1",
-        )
-
-        assert result.exit_code == 4
-
-    @respx.mock
-    def test_invalid_row_aborts_and_imports_nothing(
-        self, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        route = respx.post(SAMPLE_IMPORTS_URL)
-        sheet = _write_import_sheet(
-            tmp_path,
-            {"accession": "ERR1", "cell_type": "Neuron"},
-            {"accession": "not-an-accession", "cell_type": "Neuron"},
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-        )
-
-        assert result.exit_code == 2
-        assert route.call_count == 0
-        assert "Row 2" in result.stderr
-        assert "NOT-AN-ACCESSION" in result.stderr
-
-    @respx.mock
-    def test_skip_invalid_imports_valid_rows(
-        self, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        route = respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "COMPLETED", ["ERR1"], [101],
-            )),
-        )
-        sheet = _write_import_sheet(
-            tmp_path,
-            {"accession": "ERR1", "cell_type": "Neuron"},
-            {"accession": "bogus", "cell_type": "Neuron"},
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-            "--skip-invalid",
-        )
-
-        assert result.exit_code == 0
         assert route.call_count == 1
-        payload = json.loads(route.calls[0].request.content)
-        assert len(payload["imports"]) == 1
-        assert "BOGUS" in result.stderr
-
-    @respx.mock
-    def test_duplicate_accession_is_usage_error(
-        self, run_cli, tmp_path: Path,
-    ) -> None:
-        _mock_metadata()
-        route = respx.post(SAMPLE_IMPORTS_URL)
-        sheet = _write_import_sheet(
-            tmp_path,
-            {"accession": "ERR1", "cell_type": "Neuron"},
-            {"accession": "err1", "cell_type": "Neuron"},
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-        )
-
-        assert result.exit_code == 2
-        assert route.call_count == 0
-        assert "duplicate" in result.stderr.lower()
+        assert "bogus" in result.stderr
 
     @respx.mock
     def test_non_csv_sheet_is_usage_error(self, run_cli, tmp_path: Path) -> None:
-        _mock_metadata()
         route = respx.post(SAMPLE_IMPORTS_URL)
         xlsx = tmp_path / "sheet.xlsx"
         xlsx.write_bytes(b"PK\x03\x04")
@@ -1623,6 +1116,107 @@ class TestSamplesImport:
 
         result = run_cli(
             "--token", TOKEN, "samples", "import", "--sheet", str(sheet),
+        )
+
+        assert result.exit_code == 2
+
+
+class TestSamplesImportStatus:
+
+    @respx.mock
+    def test_reports_running_job(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(
+                42, "RUNNING", ["ERR1", "ERR2"],
+            )),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "42",
+        )
+
+        assert result.exit_code == 0
+        assert "42" in result.stdout
+        assert "RUNNING" in result.stdout
+
+    @respx.mock
+    def test_reports_completed_job_with_sample_ids(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(
+                42, "COMPLETED", ["ERR1", "ERR2"], [101, 102],
+            )),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "42",
+        )
+
+        assert result.exit_code == 0
+        assert "101" in result.stdout
+        assert "102" in result.stdout
+
+    @respx.mock
+    def test_reports_failed_job_with_error(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(
+                42, "FAILED", ["ERR1"], error="download failed",
+            )),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "42",
+        )
+
+        assert result.exit_code == 0
+        assert "FAILED" in result.stdout
+        assert "download failed" in result.stdout
+
+    @respx.mock
+    def test_json_document_matches_job_shape(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(
+                42, "COMPLETED", ["ERR1"], [101],
+            )),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "42", "--json",
+        )
+
+        assert result.exit_code == 0
+        document = json.loads(result.stdout)
+        assert result.stdout.count("\n") == 1
+        assert document == {
+            "id": 42,
+            "status": "COMPLETED",
+            "accessions": ["ERR1"],
+            "sample_ids": [101],
+            "execution_id": 7,
+            "error": None,
+        }
+
+    @respx.mock
+    def test_unknown_job_id_is_not_found(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/999").mock(
+            return_value=httpx.Response(
+                HTTPStatus.NOT_FOUND, json={"error": "sample import 999 does not exist"},
+            ),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "999",
+        )
+
+        assert result.exit_code == 4
+
+    def test_missing_job_id_is_usage_error(self, run_cli) -> None:
+        result = run_cli("--token", TOKEN, "samples", "import-status")
+
+        assert result.exit_code == 2
+
+    def test_non_numeric_job_id_is_usage_error(self, run_cli) -> None:
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "not-a-number",
         )
 
         assert result.exit_code == 2

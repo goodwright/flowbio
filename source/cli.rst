@@ -370,88 +370,83 @@ authentication failure; otherwise the standard mapping above.
 ``samples import``
 ~~~~~~~~~~~~~~~~~~~
 
-Import samples from public-repository accessions (SRR/ERR/DRR run or
-SRX/ERX/DRX experiment accessions), applying one sample type to every row —
-no files to upload yourself.
+Kick off a batch import of samples from public-repository accessions (SRR/
+ERR/DRR run or SRX/ERX/DRX experiment accessions), applying one sample type
+to every row — no files to upload yourself.
 
 ::
 
     flowbio samples import --sheet PATH --sample-type TYPE
-        [--skip-invalid] [--poll-interval SECONDS] [--timeout SECONDS]
 
 Run ``flowbio samples import --help`` for the full option list. The sheet is
 a CSV with an ``accession`` column plus optional ``name``/``organism`` and
 metadata columns (there is no ``batch-template`` equivalent for it, since it
 has no reads files or project field). ``name`` defaults to the accession when
-omitted. The sample type is sent as-is and validated server-side.
+omitted. The sample type, accession format, duplicates, and metadata rules
+are all sent as-is and validated **server-side** — this command does not
+pre-validate rows itself; an invalid sheet surfaces as a normal API error
+(exit ``5`` or ``1``), not a local rejection.
 
-**Validation is up front**, mirroring ``upload-batch``: a missing or
-malformed accession, a duplicate accession within the sheet, a value outside
-a closed-option attribute's allowed values, or missing metadata required for
-the chosen type — every problem is collected before anything is submitted.
-By default any invalid row aborts the whole run (exit ``2``);
-``--skip-invalid`` skips them (reporting why) and imports the rest.
+Every row is submitted **together as one server-side job**. This command
+does **not wait for it to finish** — it reports the job's id and initial
+status (almost always ``"RUNNING"``) and returns immediately. Check on it
+with ``samples import-status --job-id ID``; polling (if you want it) is up
+to you, e.g. in a shell loop.
 
-Unlike ``upload-batch``, every valid row is submitted **together as one
-server-side job** — there is no per-row upload loop. The command polls that
-job (every ``--poll-interval`` seconds, default 5, for up to ``--timeout``
-seconds, default 1800; both must be positive, finite numbers) until it leaves
-``"RUNNING"``. Once the job completes, every submitted row is reported as
-imported; if it fails or times out, every row is reported as failed, since
-the job has one outcome for the whole batch. Either way, the job's ``job_id``
-is included in the output so a timed-out or interrupted run can be resumed
-with ``client.samples.get_import(job_id)`` from the library.
+**Output** — human: a confirmation line with the job id and a pointer to
+``import-status``. ``--json``: the created job as a single document —
+``id``, ``status``, ``accessions``, ``sample_ids`` (empty until the job
+completes), ``execution_id``, ``error``.
 
-Each ``failed`` entry carries a ``status``: ``"failed"`` means the job
-genuinely failed, or completed but didn't create that specific row's sample —
-safe to re-run once fixed. ``"running"`` means ``--timeout`` was reached
-while the job was still in progress: it may yet succeed, so check
-``job_status``/``get_import(job_id)`` rather than re-submitting, which would
-risk duplicate samples. ``"unknown"`` means the job's ``accessions``/
-``sample_ids`` couldn't be matched to rows at all (e.g. a completed job that
-returned no sample ids, or fewer/more than the accessions submitted) — an
-unexpected shape from the server, so treat it like ``"running"`` and don't
-blindly re-run. Whatever sample ids the job did return are always available,
-unattributed, as ``job_sample_ids`` — useful to check a ``"running"``/
-``"unknown"`` outcome didn't already create something.
-
-**Output** — human: each row's outcome on stderr (``import failed`` for a
-genuine failure, ``import did not finish`` for a timeout, ``import outcome
-unknown`` for an unmatchable job), then a final counts summary on stdout.
-``--json``: a single document on stdout with ``imported``, ``failed``, and
-``skipped`` lists, a ``counts`` summary, and the job's ``job_id``/
-``job_status``/``execution_id``/``job_sample_ids`` (``null``/``[]`` when no
-job was created, e.g. every row was invalid or skipped):
-
-.. code-block:: json
-
-    {
-      "imported": [{"row_number": 1, "accession": "ERR1160845", "sample_id": 101}],
-      "failed":   [],
-      "skipped":  [{"row_number": 2, "accession": "BOGUS", "reasons": ["..."]}],
-      "counts":   {"imported": 1, "failed": 0, "skipped": 1},
-      "job_id": 42, "job_status": "COMPLETED", "execution_id": 7, "job_sample_ids": [101]
-    }
-
-**Exit codes** — ``0`` the import job completed; ``2`` a pre-flight
-validation failure (without ``--skip-invalid``), a non-CSV sheet, or a
-non-positive/non-finite ``--poll-interval``/``--timeout``; ``1`` the import
-job failed, did not finish within ``--timeout`` (check ``job_status``/each
-row's ``status`` before re-running — see above), or returned a shape the rows
-couldn't be matched against; ``3`` authentication failure; otherwise the
-standard mapping above.
+**Exit codes** — ``0`` the job was created (regardless of its eventual
+outcome — check that with ``import-status``); ``2`` a non-CSV sheet; ``1``
+the API rejected the batch (e.g. unknown sample type, missing required
+metadata, an unsupported accession format — the server returns these as a
+``422``, which isn't one of the exit codes with its own mapping below); ``3``
+authentication failure; otherwise the standard mapping above.
 
 **Example**
 
 .. code-block:: bash
 
     $ flowbio samples import --sheet ./accessions.csv --sample-type RNA-Seq
-    Row 1 (ERR1160845): imported sample 101
-    Row 2 (ERR10677146): imported sample 102
-    Imported 2, failed 0, skipped 0.
+    Started import job 42 for 2 accession(s) (status: RUNNING). Check progress with 'flowbio samples import-status --job-id 42'.
 
     $ flowbio samples import --sheet ./accessions.csv --sample-type RNA-Seq --json
-    {"imported": [{"row_number": 1, "accession": "ERR1160845", "sample_id": 101}, {"row_number": 2, "accession": "ERR10677146", "sample_id": 102}], "failed": [], "skipped": [], "counts": {"imported": 2, "failed": 0, "skipped": 0}, "job_id": 42, "job_status": "COMPLETED", "execution_id": 7, "job_sample_ids": [101, 102]}
+    {"id": 42, "status": "RUNNING", "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [], "execution_id": 7, "error": null}
+
+``samples import-status``
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Fetch and report the current state of a ``samples import`` job.
+
+::
+
+    flowbio samples import-status --job-id ID
+
+Read-only — checking a job's status never changes it. There is no built-in
+polling; run this again (or wrap it in your own loop, e.g. ``watch``) until
+``status`` leaves ``"RUNNING"``.
+
+**Output** — human: a one-line summary including the sample ids on
+``"COMPLETED"`` or the error on ``"FAILED"``. ``--json``: the job as a single
+document — ``id``, ``status``, ``accessions``, ``sample_ids``,
+``execution_id``, ``error``.
+
+**Exit codes** — ``0`` the job's state was fetched (the job's own ``status``,
+not this command's exit code, reflects whether the import itself succeeded
+or failed); ``4`` no job with that id exists; ``3`` authentication failure;
+otherwise the standard mapping above.
+
+**Example**
+
+.. code-block:: bash
+
+    $ flowbio samples import-status --job-id 42
+    Job 42: COMPLETED. Sample ids: 101, 102.
+
+    $ flowbio samples import-status --job-id 42 --json
+    {"id": 42, "status": "COMPLETED", "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [101, 102], "execution_id": 7, "error": null}
 
 ``api get``
 ~~~~~~~~~~~
