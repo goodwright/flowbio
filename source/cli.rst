@@ -385,9 +385,10 @@ equivalent for it, since it has no reads files or project field). ``name``
 defaults to the accession when omitted. There is deliberately no
 ``--sample-type`` flag: the sheet's own column is the only way to supply a
 sample type, so a mixed-type sheet needs no special handling and a
-single-type sheet just repeats the same value down the column. The sample
-type, accession format, and metadata rules are all sent as-is (surrounding
-whitespace trimmed) and validated **server-side**; this command only checks
+single-type sheet just repeats the same value down the column. Every value
+is sent as-is (surrounding whitespace trimmed, including in header names);
+the accession format, sample type, and metadata rules are validated
+**server-side**. This command only checks
 that the sheet is a readable ``.csv`` and that every row has an accession
 and a sample type — a blank cell in either column rejects the whole sheet
 up front rather than shipping something the server would just reject

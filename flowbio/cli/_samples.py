@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -669,9 +669,8 @@ def _job_summary(job: SampleImportJob) -> str:
         suffix = _timestamp_suffix("finished", job.finished)
         return f"Job {job.id}: COMPLETED{suffix}. Sample ids: {ids}."
     if job.status == "FAILED":
-        # The error, if any, is on stderr as an advisory (see
-        # _import_status_command) rather than repeated here, so a human
-        # running this doesn't see the same sentence twice.
+        # A human sees the error as a separate advisory on stderr, so it
+        # isn't repeated here.
         return f"Job {job.id}: FAILED{_timestamp_suffix('finished', job.finished)}."
     label = "started" if job.started else "created"
     return f"Job {job.id}: {job.status}{_timestamp_suffix(label, job.started or job.created)}."
@@ -680,9 +679,7 @@ def _job_summary(job: SampleImportJob) -> str:
 def _timestamp_suffix(label: str, timestamp: datetime | None) -> str:
     if timestamp is None:
         return ""
-    # SampleImportJob normalises a naive value to UTC, so every timestamp
-    # reaching here is already aware.
-    return f" ({label} {timestamp.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')})"
+    return f" ({label} {timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')})"
 
 
 def _merge_metadata(

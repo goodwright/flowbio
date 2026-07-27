@@ -1103,6 +1103,27 @@ class TestSamplesImport:
         assert sample_types == ["chip_seq", "atac_seq"]
 
     @respx.mock
+    def test_trailing_blank_row_is_skipped(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        route = respx.post(SAMPLE_IMPORTS_URL).mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
+                1, "RUNNING", ["ERR1"],
+            )),
+        )
+        sheet = _write_import_sheet(
+            tmp_path, _import_record(accession="ERR1"), {},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import", "--sheet", str(sheet),
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(route.calls[0].request.content)
+        assert [entry["accession"] for entry in payload["imports"]] == ["ERR1"]
+
+    @respx.mock
     def test_api_rejection_propagates_as_error(
         self, run_cli, tmp_path: Path,
     ) -> None:
