@@ -5,7 +5,7 @@ import pytest
 
 from flowbio.cli._accession_sheet import AccessionSheetRow, parse_accession_sheet
 from flowbio.cli._exit_codes import CliUsageError
-from flowbio.v2.samples import SampleImportSpec, SampleTypeId
+from flowbio.v2.samples import SampleImportSpec
 
 HEADERS = ["accession", "name", "organism", "sample_type", "cell_type", "source", "source__annotation"]
 
@@ -21,11 +21,17 @@ def _write_sheet(
     return path
 
 
+def _record(**overrides: str) -> dict[str, str]:
+    record = {"accession": "ERR1160845", "sample_type": "rna_seq"}
+    record.update(overrides)
+    return record
+
+
 class TestParseAccessionSheet:
 
     def test_accession_is_passed_through_unchanged(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(
-            _write_sheet(tmp_path, {"accession": "err1160845"}),
+            _write_sheet(tmp_path, _record(accession="err1160845")),
         )
 
         assert sheet.rows[0].accession == "err1160845"
@@ -33,14 +39,14 @@ class TestParseAccessionSheet:
     def test_empty_cells_omitted_from_metadata(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(_write_sheet(
             tmp_path,
-            {"accession": "ERR1160845", "cell_type": "", "source": "blood"},
+            _record(cell_type="", source="blood"),
         ))
 
         assert sheet.rows[0].metadata == {"source": "blood"}
 
     def test_name_and_organism_are_optional(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(
-            _write_sheet(tmp_path, {"accession": "ERR1160845"}),
+            _write_sheet(tmp_path, _record()),
         )
 
         assert sheet.rows[0].name is None
@@ -49,22 +55,15 @@ class TestParseAccessionSheet:
     def test_name_and_organism_are_parsed_when_present(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(_write_sheet(
             tmp_path,
-            {"accession": "ERR1160845", "name": "liver_r1", "organism": "Hs"},
+            _record(name="liver_r1", organism="Hs"),
         ))
 
         assert sheet.rows[0].name == "liver_r1"
         assert sheet.rows[0].organism == "Hs"
 
-    def test_sample_type_column_is_optional(self, tmp_path: Path) -> None:
-        sheet = parse_accession_sheet(
-            _write_sheet(tmp_path, {"accession": "ERR1160845"}),
-        )
-
-        assert sheet.rows[0].sample_type is None
-
-    def test_sample_type_column_is_parsed_when_present(self, tmp_path: Path) -> None:
+    def test_sample_type_is_parsed(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(_write_sheet(
-            tmp_path, {"accession": "ERR1160845", "sample_type": "chip_seq"},
+            tmp_path, _record(sample_type="chip_seq"),
         ))
 
         assert sheet.rows[0].sample_type == "chip_seq"
@@ -74,7 +73,7 @@ class TestParseAccessionSheet:
         with path.open("w", newline="", encoding="utf-8-sig") as handle:
             writer = csv.DictWriter(handle, fieldnames=HEADERS)
             writer.writeheader()
-            writer.writerow({"accession": "ERR1160845"})
+            writer.writerow(_record())
 
         sheet = parse_accession_sheet(path)
 
@@ -83,8 +82,8 @@ class TestParseAccessionSheet:
     def test_row_numbers_are_one_based(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(_write_sheet(
             tmp_path,
-            {"accession": "ERR1160845"},
-            {"accession": "ERR10677146"},
+            _record(accession="ERR1160845"),
+            _record(accession="ERR10677146"),
         ))
 
         assert [row.row_number for row in sheet.rows] == [1, 2]
@@ -112,31 +111,45 @@ class TestParseAccessionSheet:
             parse_accession_sheet(_write_sheet(tmp_path))
 
     def test_row_with_blank_accession_is_usage_error(self, tmp_path: Path) -> None:
-        with pytest.raises(CliUsageError, match="row"):
+        with pytest.raises(CliUsageError, match=r"data row\(s\) 2 has no accession"):
             parse_accession_sheet(_write_sheet(
                 tmp_path,
-                {"accession": "ERR1160845"},
-                {"accession": ""},
+                _record(accession="ERR1160845"),
+                _record(accession=""),
             ))
 
     def test_row_with_no_accession_column_is_usage_error(self, tmp_path: Path) -> None:
         path = tmp_path / "sheet.csv"
         with path.open("w", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=["run", "name"])
+            writer = csv.DictWriter(handle, fieldnames=["run", "name", "sample_type"])
             writer.writeheader()
-            writer.writerow({"run": "ERR1160845", "name": "liver_r1"})
+            writer.writerow({"run": "ERR1160845", "name": "liver_r1", "sample_type": "rna_seq"})
 
         with pytest.raises(CliUsageError):
             parse_accession_sheet(path)
 
     def test_usage_error_names_every_row_missing_an_accession(self, tmp_path: Path) -> None:
-        with pytest.raises(CliUsageError, match="1.*3"):
+        with pytest.raises(CliUsageError, match=r"data row\(s\) 1, 3 have no accession"):
             parse_accession_sheet(_write_sheet(
                 tmp_path,
-                {"accession": ""},
-                {"accession": "ERR1"},
-                {"accession": ""},
+                _record(accession=""),
+                _record(accession="ERR1"),
+                _record(accession=""),
             ))
+
+    def test_row_with_blank_sample_type_is_usage_error(self, tmp_path: Path) -> None:
+        with pytest.raises(CliUsageError, match=r"data row\(s\) 1 has no sample_type"):
+            parse_accession_sheet(_write_sheet(tmp_path, _record(sample_type="")))
+
+    def test_row_with_no_sample_type_column_is_usage_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "sheet.csv"
+        with path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=["accession", "name"])
+            writer.writeheader()
+            writer.writerow({"accession": "ERR1160845", "name": "liver_r1"})
+
+        with pytest.raises(CliUsageError):
+            parse_accession_sheet(path)
 
 
 def test_row_rejects_empty_accession_by_construction() -> None:
@@ -146,7 +159,19 @@ def test_row_rejects_empty_accession_by_construction() -> None:
             accession="",
             name=None,
             organism=None,
-            sample_type=None,
+            sample_type="rna_seq",
+            metadata={},
+        )
+
+
+def test_row_rejects_empty_sample_type_by_construction() -> None:
+    with pytest.raises(ValueError, match="sample_type"):
+        AccessionSheetRow(
+            row_number=1,
+            accession="ERR1160845",
+            name=None,
+            organism=None,
+            sample_type="",
             metadata={},
         )
 
@@ -154,42 +179,20 @@ def test_row_rejects_empty_accession_by_construction() -> None:
 class TestAccessionSheetRowToSpec:
 
     def _row(self, tmp_path: Path, **overrides: str):
-        record = {"accession": "ERR1160845"}
-        record.update(overrides)
-        sheet = parse_accession_sheet(_write_sheet(tmp_path, record))
+        sheet = parse_accession_sheet(_write_sheet(tmp_path, _record(**overrides)))
         return sheet.rows[0]
 
-    def test_uses_default_sample_type_when_row_has_none(self, tmp_path: Path) -> None:
-        row = self._row(tmp_path)
-
-        spec = row.to_spec(SampleTypeId("rna_seq"))
-
-        assert spec == SampleImportSpec(accession="ERR1160845", sample_type="rna_seq")
-
-    def test_row_sample_type_overrides_the_default(self, tmp_path: Path) -> None:
+    def test_uses_the_row_sample_type(self, tmp_path: Path) -> None:
         row = self._row(tmp_path, sample_type="chip_seq")
 
-        spec = row.to_spec(SampleTypeId("rna_seq"))
+        spec = row.to_spec()
 
-        assert spec.sample_type == "chip_seq"
-
-    def test_blank_sample_type_cell_falls_back_to_default(self, tmp_path: Path) -> None:
-        row = self._row(tmp_path, sample_type="")
-
-        spec = row.to_spec(SampleTypeId("rna_seq"))
-
-        assert spec.sample_type == "rna_seq"
-
-    def test_raises_when_no_sample_type_or_default_available(self, tmp_path: Path) -> None:
-        row = self._row(tmp_path)
-
-        with pytest.raises(ValueError, match="sample_type"):
-            row.to_spec(None)
+        assert spec == SampleImportSpec(accession="ERR1160845", sample_type="chip_seq")
 
     def test_carries_name_organism_and_metadata(self, tmp_path: Path) -> None:
         row = self._row(tmp_path, name="liver_r1", organism="Hs", cell_type="Neuron")
 
-        spec = row.to_spec(SampleTypeId("rna_seq"))
+        spec = row.to_spec()
 
         assert spec == SampleImportSpec(
             accession="ERR1160845",

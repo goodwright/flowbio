@@ -217,14 +217,16 @@ class SampleImportJob(BaseModel, frozen=True):
 
     @field_validator("created", "started", "finished", mode="after")
     @classmethod
-    def _assume_utc_if_naive(cls, value: datetime | None) -> datetime | None:
+    def _normalize_to_utc(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
         # A naive value (no tzinfo) is treated as already UTC, matching what
         # the server always means by these timestamps, rather than left
         # ambiguous for every consumer (CLI, --json, library) to decide on
         # its own.
-        if value is not None and value.tzinfo is None:
+        if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
-        return value
+        return value.astimezone(timezone.utc)
 
 
 class SampleResource:

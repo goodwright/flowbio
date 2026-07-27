@@ -1,18 +1,19 @@
 """CSV accession-sheet parsing for ``samples import``.
 
-An accession sheet is a CSV with one row per accession to import: a required
-``accession`` column (a public-repository run or experiment accession) plus
-optional ``name``/``organism``/``sample_type`` and per-accession metadata
-columns. This mirrors ``_sheet.py``'s reads-based sample sheet, but the
-reserved columns differ — there is nothing to upload (no ``reads1``/
-``reads2``) and the import API has no project field.
+An accession sheet is a CSV with one row per accession to import: required
+``accession`` and ``sample_type`` columns, plus optional ``name``/
+``organism`` and per-accession metadata columns. This mirrors ``_sheet.py``'s
+reads-based sample sheet, but the reserved columns differ — there is nothing
+to upload (no ``reads1``/``reads2``) and the import API has no project field.
 
 Domain rules (accession format, duplicates, sample type, organism, metadata)
 are all checked server-side when the sheet is submitted — duplicating that
-locally would just be a second, driftable copy of the same rules. An
-accession is different: it is the one column every row must have to mean
-anything at all, so a missing one is rejected here rather than silently
-skipped or shipped as an empty string the server would just reject anyway.
+locally would just be a second, driftable copy of the same rules.
+``accession`` and ``sample_type`` are different: they are the two columns
+every row must have to mean anything at all, so a missing one is rejected
+here rather than silently skipped or shipped as an empty string the server
+would just reject anyway. There is deliberately no other way to supply a
+sample type for ``samples import`` — the sheet is the single source of it.
 """
 from __future__ import annotations
 
@@ -29,40 +30,26 @@ RESERVED_COLUMNS = ("accession", "name", "organism", "sample_type")
 
 @dataclass(frozen=True)
 class AccessionSheetRow:
-    """One data row of an accession sheet.
-
-    ``sample_type`` is only set when the sheet has its own ``sample_type``
-    column for this row; :meth:`to_spec` falls back to the batch's
-    ``--sample-type`` when it's absent.
-    """
+    """One data row of an accession sheet."""
 
     row_number: int
     accession: str
     name: str | None
     organism: str | None
-    sample_type: SampleTypeId | None
+    sample_type: SampleTypeId
     metadata: dict[str, str]
 
     def __post_init__(self) -> None:
         if not self.accession:
             raise ValueError("accession must not be empty")
+        if not self.sample_type:
+            raise ValueError("sample_type must not be empty")
 
-    def to_spec(self, default_sample_type: SampleTypeId | None) -> SampleImportSpec:
-        """Build the :class:`~flowbio.v2.samples.SampleImportSpec` for this row.
-
-        :param default_sample_type: The sample type to use when this row has
-            no ``sample_type`` of its own.
-        :raises ValueError: If this row has no ``sample_type`` of its own and
-            ``default_sample_type`` is ``None``.
-        """
-        sample_type = self.sample_type or default_sample_type
-        if sample_type is None:
-            raise ValueError(
-                f"row {self.row_number} has no sample_type and no default was given",
-            )
+    def to_spec(self) -> SampleImportSpec:
+        """Build the :class:`~flowbio.v2.samples.SampleImportSpec` for this row."""
         return SampleImportSpec(
             accession=self.accession,
-            sample_type=sample_type,
+            sample_type=self.sample_type,
             name=self.name,
             organism_id=self.organism,
             metadata=self.metadata or None,
@@ -83,11 +70,11 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
     :param path: The accession-sheet file. Must be a ``.csv`` — an ``.xlsx`` or
         ``.tsv`` is a usage error directing the user to export to CSV.
     :returns: The parsed sheet, with empty cells dropped (other than
-        ``accession``, which rejects the sheet instead — see below). Values
-        are otherwise passed through unchanged, including ``accession``, sent
-        to the server exactly as entered.
+        ``accession``/``sample_type``, which reject the sheet instead — see
+        below). Values are otherwise passed through unchanged, including
+        ``accession``, sent to the server exactly as entered.
     :raises CliUsageError: If the file is not a readable ``.csv``, has no
-        rows, or has a row with no accession.
+        rows, or has a row with no accession or no sample_type.
     """
     if path.suffix.lower() != ".csv":
         raise CliUsageError(
@@ -108,22 +95,30 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
     if not records:
         raise CliUsageError(f"Accession sheet has no rows: {path}.")
     rows: list[AccessionSheetRow] = []
-    missing: list[int] = []
+    missing_accession: list[int] = []
+    missing_sample_type: list[int] = []
     for row_number, record in records:
         accession = _cell(record, "accession")
+        sample_type = _cell(record, "sample_type")
         if accession is None:
-            missing.append(row_number)
-        else:
-            rows.append(_build_row(record, row_number, metadata_columns, accession))
-    if missing:
-        numbers = ", ".join(str(number) for number in missing)
-        # Data row 1 is the first row after the header, matching _sheet.py's
-        # convention (and upload-batch's documented "1-based row number").
-        verb = "has" if len(missing) == 1 else "have"
-        raise CliUsageError(
-            f"Accession sheet data row(s) {numbers} {verb} no accession: {path}.",
-        )
+            missing_accession.append(row_number)
+        if sample_type is None:
+            missing_sample_type.append(row_number)
+        if accession is not None and sample_type is not None:
+            rows.append(_build_row(record, row_number, metadata_columns, accession, sample_type))
+    if missing_accession:
+        raise _missing_column_error("accession", missing_accession, path)
+    if missing_sample_type:
+        raise _missing_column_error("sample_type", missing_sample_type, path)
     return AccessionSheet(path=path, rows=rows)
+
+
+def _missing_column_error(column: str, missing: list[int], path: Path) -> CliUsageError:
+    numbers = ", ".join(str(number) for number in missing)
+    # Data row 1 is the first row after the header, matching _sheet.py's
+    # convention (and upload-batch's documented "1-based row number").
+    verb = "has" if len(missing) == 1 else "have"
+    return CliUsageError(f"Accession sheet data row(s) {numbers} {verb} no {column}: {path}.")
 
 
 def _cell(record: dict[str, str], column: str) -> str | None:
@@ -132,19 +127,22 @@ def _cell(record: dict[str, str], column: str) -> str | None:
 
 
 def _build_row(
-    record: dict[str, str], row_number: int, metadata_columns: list[str], accession: str,
+    record: dict[str, str],
+    row_number: int,
+    metadata_columns: list[str],
+    accession: str,
+    sample_type: str,
 ) -> AccessionSheetRow:
     metadata = {
         column: value
         for column in metadata_columns
         if (value := _cell(record, column)) is not None
     }
-    sample_type = _cell(record, "sample_type")
     return AccessionSheetRow(
         row_number=row_number,
         accession=accession,
         name=_cell(record, "name"),
         organism=_cell(record, "organism"),
-        sample_type=SampleTypeId(sample_type) if sample_type is not None else None,
+        sample_type=SampleTypeId(sample_type),
         metadata=metadata,
     )

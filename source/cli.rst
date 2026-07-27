@@ -371,31 +371,28 @@ authentication failure; otherwise the standard mapping above.
 ~~~~~~~~~~~~~~~~~~
 
 Kick off a batch import of samples from public-repository accessions (SRR/
-ERR/DRR run or SRX/ERX/DRX experiment accessions), applying a default sample
-type that each row can override — no files to upload yourself.
+ERR/DRR run or SRX/ERX/DRX experiment accessions) — no files to upload
+yourself.
 
 ::
 
-    flowbio samples import --sheet PATH [--sample-type TYPE]
+    flowbio samples import --sheet PATH
 
 Run ``flowbio samples import --help`` for the full option list. The sheet is
-a CSV with a required ``accession`` column, plus optional ``name``/
-``organism``/``sample_type`` and metadata columns (there is no
-``batch-template`` equivalent for it, since it has no reads files or project
-field; note ``sample_type`` is reserved for the per-row override, so a
-metadata attribute of that exact name can't be sent through the sheet).
-``name`` defaults to the accession when omitted. A row's own ``sample_type``
-column, if present, overrides ``--sample-type`` for that row only — useful
-for a mixed-type sheet; ``--sample-type`` itself is only required if some
-row has no ``sample_type`` column of its own. The sample type, accession
-format, and metadata rules are all sent as-is and validated **server-side**;
-this command only checks that the sheet is a readable ``.csv``, that every
-row has an accession, and that every row can resolve a sample type (its own
-column, or ``--sample-type``) — a blank ``accession`` cell or a row with
-neither rejects the whole sheet up front rather than shipping something the
-server would just reject anyway. Rows are counted from ``1`` for the first
-data row, after the header (the same convention as ``upload-batch``'s
-``row_number``).
+a CSV with required ``accession``/``sample_type`` columns, plus optional
+``name``/``organism`` and metadata columns (there is no ``batch-template``
+equivalent for it, since it has no reads files or project field). ``name``
+defaults to the accession when omitted. There is deliberately no
+``--sample-type`` flag: the sheet's own column is the only way to supply a
+sample type, so a mixed-type sheet needs no special handling and a
+single-type sheet just repeats the same value down the column. The sample
+type, accession format, and metadata rules are all sent as-is and validated
+**server-side**; this command only checks that the sheet is a readable
+``.csv`` and that every row has an accession and a sample type — a blank
+cell in either column rejects the whole sheet up front rather than shipping
+something the server would just reject anyway. Rows are counted from ``1``
+for the first data row, after the header (the same convention as
+``upload-batch``'s ``row_number``).
 
 Every row is submitted **together as one server-side job**. This command
 does **not wait for it to finish** — it reports the job's id and initial
@@ -412,24 +409,21 @@ timestamps, ``null`` if not yet reached), ``accessions``, ``sample_ids``
 
 **Exit codes** — ``0`` the job was created (regardless of its eventual
 outcome — check that with ``import-status``); ``2`` the sheet isn't a
-readable ``.csv``, has no rows, has a row with no accession, or has a row
-with no resolvable sample type; ``1`` the API rejected the batch (e.g.
-unknown sample type, missing required metadata, an unsupported accession
-format — these come back as an HTTP ``422``; ``5`` in the unlikely case it
-answers ``400`` instead); ``3`` authentication failure; otherwise the
-standard mapping above. Because whether ``--sample-type`` is required
-depends on the sheet's contents, these sheet-level usage errors (``2``) are
-only detected after authentication succeeds, unlike a malformed flag value
-(which fails before it).
+readable ``.csv``, has no rows, or has a row with no accession or no
+sample type; ``1`` the API rejected the batch (e.g. unknown sample type,
+missing required metadata, an unsupported accession format — these come
+back as an HTTP ``422``; ``5`` in the unlikely case it answers ``400``
+instead); ``3`` authentication failure; otherwise the standard mapping
+above.
 
 **Example**
 
 .. code-block:: bash
 
-    $ flowbio samples import --sheet ./accessions.csv --sample-type RNA-Seq
+    $ flowbio samples import --sheet ./accessions.csv
     Started import job 42 for 2 accession(s) (status: RUNNING). Check progress with 'flowbio samples import-status --job-id 42'.
 
-    $ flowbio samples import --sheet ./accessions.csv --sample-type RNA-Seq --json
+    $ flowbio samples import --sheet ./accessions.csv --json
     {"id": 42, "status": "RUNNING", "created": "2024-04-05T19:34:38Z", "started": null, "finished": null, "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [], "execution_id": null, "error": null}
 
 ``samples import-status``
