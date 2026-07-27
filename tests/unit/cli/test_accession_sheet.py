@@ -151,6 +151,19 @@ class TestParseAccessionSheet:
         with pytest.raises(CliUsageError):
             parse_accession_sheet(path)
 
+    def test_sheet_broken_in_both_columns_reports_both_in_one_error(
+        self, tmp_path: Path,
+    ) -> None:
+        with pytest.raises(CliUsageError) as excinfo:
+            parse_accession_sheet(_write_sheet(
+                tmp_path,
+                _record(accession=""),
+                _record(accession="ERR2", sample_type=""),
+            ))
+
+        assert "data row(s) 1 has no accession" in str(excinfo.value)
+        assert "data row(s) 2 has no sample_type" in str(excinfo.value)
+
 
 def test_row_rejects_empty_accession_by_construction() -> None:
     with pytest.raises(ValueError, match="accession"):

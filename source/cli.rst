@@ -418,6 +418,14 @@ above.
 
 **Example**
 
+``accessions.csv``:
+
+.. code-block:: text
+
+    accession,sample_type,name,organism
+    ERR1160845,RNA-Seq,liver_r1,Hs
+    ERR10677146,RNA-Seq,,
+
 .. code-block:: bash
 
     $ flowbio samples import --sheet ./accessions.csv

@@ -1152,7 +1152,7 @@ class TestSamplesImport:
 
         assert result.exit_code == 2
         assert route.call_count == 0
-        assert str(sheet) in result.stderr
+        assert "no rows" in result.stderr
 
     @respx.mock
     def test_row_missing_sample_type_is_usage_error(
@@ -1188,7 +1188,7 @@ class TestSamplesImport:
 
         assert result.exit_code == 2
         assert route.call_count == 0
-        assert str(sheet) in result.stderr
+        assert "data row(s) 1, 2 have no accession" in result.stderr
 
     @respx.mock
     def test_mixed_valid_and_blank_accession_rows_is_usage_error(
@@ -1209,6 +1209,27 @@ class TestSamplesImport:
 
         assert result.exit_code == 2
         assert route.call_count == 0
+        assert "data row(s) 2 has no accession" in result.stderr
+
+    @respx.mock
+    def test_sheet_broken_in_both_columns_reports_both_in_one_error(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        route = respx.post(SAMPLE_IMPORTS_URL)
+        sheet = _write_import_sheet(
+            tmp_path,
+            _import_record(accession=""),
+            _import_record(accession="ERR2", sample_type=""),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import", "--sheet", str(sheet),
+        )
+
+        assert result.exit_code == 2
+        assert route.call_count == 0
+        assert "data row(s) 1 has no accession" in result.stderr
+        assert "data row(s) 2 has no sample_type" in result.stderr
 
     @respx.mock
     def test_sheet_with_no_accession_column_is_usage_error(
@@ -1227,7 +1248,7 @@ class TestSamplesImport:
 
         assert result.exit_code == 2
         assert route.call_count == 0
-        assert str(sheet) in result.stderr
+        assert "data row(s) 1 has no accession" in result.stderr
 
 
 class TestSamplesImportStatus:
