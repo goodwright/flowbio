@@ -36,7 +36,9 @@ from flowbio.v2.exceptions import FlowApiError
 from flowbio.v2.samples import (
     MetadataAttribute,
     SampleImportJob,
+    SampleImportJobId,
     SampleImportSpec,
+    SampleImportStatus,
     SampleTypeId,
 )
 
@@ -259,6 +261,13 @@ _DEFAULT_POLL_INTERVAL = 5.0
 _DEFAULT_TIMEOUT = 1800.0
 
 
+def _positive_float(value: str) -> float:
+    parsed = float(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError(f"must be positive, got {value!r}")
+    return parsed
+
+
 def _configure_import(import_parser: argparse.ArgumentParser) -> None:
     import_parser.set_defaults(command_parser=import_parser, handler=_import_command)
     import_parser.add_argument(
@@ -282,7 +291,7 @@ def _configure_import(import_parser: argparse.ArgumentParser) -> None:
     )
     import_parser.add_argument(
         "--poll-interval",
-        type=float,
+        type=_positive_float,
         default=_DEFAULT_POLL_INTERVAL,
         metavar="SECONDS",
         help=(
@@ -292,7 +301,7 @@ def _configure_import(import_parser: argparse.ArgumentParser) -> None:
     )
     import_parser.add_argument(
         "--timeout",
-        type=float,
+        type=_positive_float,
         default=_DEFAULT_TIMEOUT,
         metavar="SECONDS",
         help=(
@@ -633,17 +642,21 @@ class _ImportResult:
 
     Unlike :class:`_BatchResult`, every accession shares one server-side job:
     all rows land in ``imported`` together on a completed job, or all land in
-    ``failed`` together (carrying the job's one error message) otherwise.
-    ``job_id``/``job_status``/``execution_id`` are ``None`` only when no job
-    was ever created (every row was invalid or skipped), so a timed-out or
-    interrupted run can still be resumed with :meth:`~flowbio.v2.samples.SampleResource.get_import`.
+    ``failed`` together (carrying the job's one error message) otherwise. Each
+    ``failed`` entry carries a ``status`` of ``"failed"`` (the job genuinely
+    failed), ``"running"`` (the job timed out but may still complete), or
+    ``"unknown"`` (the job's accessions/sample_ids couldn't be matched) — only
+    ``"failed"`` is safe to blindly retry. ``job_id``/``job_status``/
+    ``execution_id`` are ``None`` only when no job was ever created (every row
+    was invalid or skipped), so a timed-out or interrupted run can still be
+    resumed with :meth:`~flowbio.v2.samples.SampleResource.get_import`.
     """
 
     imported: list[dict[str, JsonValue]]
     failed: list[dict[str, JsonValue]]
     skipped: list[dict[str, JsonValue]]
-    job_id: int | None = None
-    job_status: str | None = None
+    job_id: SampleImportJobId | None = None
+    job_status: SampleImportStatus | None = None
     execution_id: int | None = None
 
     @property
@@ -689,11 +702,9 @@ def _import_command(
     :param output: The result/error renderer.
     :returns: :attr:`ExitCode.SUCCESS` when the import job completes,
         :attr:`ExitCode.USAGE` on a pre-flight validation failure without
-        ``--skip-invalid`` or a non-positive ``--poll-interval``/``--timeout``,
-        or :attr:`ExitCode.RUNTIME` if the import job fails or does not
-        finish within ``--timeout``.
+        ``--skip-invalid``, or :attr:`ExitCode.RUNTIME` if the import job
+        fails or does not finish within ``--timeout``.
     """
-    _validate_poll_options(args.poll_interval, args.timeout)
     sheet = parse_accession_sheet(args.sheet)
     attributes = client.samples.get_metadata_attributes()
     duplicates = duplicate_accession_errors(sheet.rows)
@@ -727,13 +738,6 @@ def _import_command(
     return result.exit_code
 
 
-def _validate_poll_options(poll_interval: float, timeout: float) -> None:
-    if poll_interval <= 0:
-        raise CliUsageError(f"--poll-interval must be positive, got {poll_interval!r}.")
-    if timeout <= 0:
-        raise CliUsageError(f"--timeout must be positive, got {timeout!r}.")
-
-
 def _run_import(
     rows: list[AccessionSheetRow],
     args: argparse.Namespace,
@@ -764,8 +768,11 @@ def _poll_job(
     client: Client, job: SampleImportJob, poll_interval: float, timeout: float,
 ) -> SampleImportJob:
     deadline = time.monotonic() + timeout
-    while job.status == "RUNNING" and time.monotonic() < deadline:
-        time.sleep(poll_interval)
+    while job.status == "RUNNING":
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(poll_interval, remaining))
         job = client.samples.get_import(job.id)
     return job
 
@@ -776,11 +783,15 @@ def _import_result(
     skipped: list[dict[str, JsonValue]],
     output: Output,
 ) -> _ImportResult:
-    accession_to_sample_id = dict(zip(job.accessions, job.sample_ids))
-    if job.status == "COMPLETED":
-        imported, failed = _completed_outcomes(job, rows, accession_to_sample_id, output)
+    if _sample_ids_unmatchable(job):
+        imported: list[dict[str, JsonValue]] = []
+        failed = _mismatched_outcome(job, rows, output)
     else:
-        imported, failed = [], _failed_outcomes(job, rows, accession_to_sample_id, output)
+        accession_to_sample_id = dict(zip(job.accessions, job.sample_ids))
+        if job.status == "COMPLETED":
+            imported, failed = _completed_outcomes(job, rows, accession_to_sample_id, output)
+        else:
+            imported, failed = [], _failed_outcomes(job, rows, accession_to_sample_id, output)
     return _ImportResult(
         imported=imported,
         failed=failed,
@@ -789,6 +800,33 @@ def _import_result(
         job_status=job.status,
         execution_id=job.execution_id,
     )
+
+
+def _sample_ids_unmatchable(job: SampleImportJob) -> bool:
+    # accessions/sample_ids are only guaranteed to correspond positionally when
+    # their lengths agree (an empty sample_ids on a RUNNING/FAILED job is
+    # expected, not a mismatch) — anything else means the job's response
+    # doesn't support the positional pairing the outcome mapping relies on.
+    return len(job.sample_ids) not in (0, len(job.accessions))
+
+
+def _mismatched_outcome(
+    job: SampleImportJob, rows: list[AccessionSheetRow], output: Output,
+) -> list[dict[str, JsonValue]]:
+    message = (
+        f"import job {job.id} returned {len(job.sample_ids)} sample id(s) for "
+        f"{len(job.accessions)} accession(s); cannot match them to rows"
+    )
+    failed: list[dict[str, JsonValue]] = []
+    for row in rows:
+        failed.append({
+            "row_number": row.row_number,
+            "accession": row.accession,
+            "message": message,
+            "status": "unknown",
+        })
+        output.emit_advisory(f"Row {row.row_number} ({row.accession}): import failed — {message}")
+    return failed
 
 
 def _completed_outcomes(
@@ -803,7 +841,10 @@ def _completed_outcomes(
         sample_id = accession_to_sample_id.get(row.accession)
         if sample_id is None:
             message = f"import job {job.id} completed but returned no sample id for this accession"
-            failed.append({"row_number": row.row_number, "accession": row.accession, "message": message})
+            failed.append({
+                "row_number": row.row_number, "accession": row.accession,
+                "message": message, "status": "failed",
+            })
             output.emit_advisory(f"Row {row.row_number} ({row.accession}): import failed — {message}")
             continue
         imported.append({"row_number": row.row_number, "accession": row.accession, "sample_id": sample_id})
@@ -817,17 +858,20 @@ def _failed_outcomes(
     accession_to_sample_id: dict[str, int],
     output: Output,
 ) -> list[dict[str, JsonValue]]:
-    if job.status == "RUNNING":
+    timed_out = job.status == "RUNNING"
+    if timed_out:
         message = (
             f"import job {job.id} did not finish within the configured timeout "
             f"(still RUNNING) — check it later with client.samples.get_import({job.id})"
         )
     else:
         message = job.error or f"import job {job.id} ended with status {job.status}"
+    entry_status = "running" if timed_out else "failed"
     failed: list[dict[str, JsonValue]] = []
     for row in rows:
         entry: dict[str, JsonValue] = {
-            "row_number": row.row_number, "accession": row.accession, "message": message,
+            "row_number": row.row_number, "accession": row.accession,
+            "message": message, "status": entry_status,
         }
         sample_id = accession_to_sample_id.get(row.accession)
         advisory = f"Row {row.row_number} ({row.accession}): import failed — {message}"

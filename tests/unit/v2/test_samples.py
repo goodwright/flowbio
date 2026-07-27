@@ -1055,6 +1055,7 @@ class TestUploadMultiplexedData:
         assert mux_route.call_count == 3
         assert result.data_ids == ["mux_1"]
 
+
 class TestImportSamples:
 
     @respx.mock

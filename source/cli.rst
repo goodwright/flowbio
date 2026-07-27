@@ -398,10 +398,18 @@ job (every ``--poll-interval`` seconds, default 5, for up to ``--timeout``
 seconds, default 1800; both must be positive) until it leaves ``"RUNNING"``.
 Once the job completes, every submitted row is reported as imported; if it
 fails or times out, every row is reported as failed with the same message
-(and the sample id, if the job did partially create one before failing),
-since the job has one outcome for the whole batch. Either way, the job's
-``job_id`` is included in the output so a timed-out or interrupted run can be
-resumed with ``client.samples.get_import(job_id)`` from the library.
+(and the sample id, if the job did create one before failing), since the job
+has one outcome for the whole batch. Either way, the job's ``job_id`` is
+included in the output so a timed-out or interrupted run can be resumed with
+``client.samples.get_import(job_id)`` from the library.
+
+Each ``failed`` entry carries a ``status``: ``"failed"`` means the job
+genuinely failed (or completed without creating that row's sample) — safe to
+re-run once fixed. ``"running"`` means ``--timeout`` was reached while the job
+was still in progress: it may yet succeed, so check ``job_status``/
+``get_import(job_id)`` rather than re-submitting, which would risk duplicate
+samples. ``"unknown"`` means the job's ``accessions``/``sample_ids`` couldn't
+be matched to rows at all (an unexpected shape from the server).
 
 **Output** — human: each row's outcome on stderr, then a final counts summary
 on stdout. ``--json``: a single document on stdout with ``imported``,
@@ -421,9 +429,11 @@ e.g. every row was invalid or skipped):
 
 **Exit codes** — ``0`` the import job completed; ``2`` a pre-flight
 validation failure (without ``--skip-invalid``), a non-CSV sheet, or a
-non-positive ``--poll-interval``/``--timeout``; ``1`` the import job failed
-or did not finish within ``--timeout``; ``3`` authentication failure;
-otherwise the standard mapping above.
+non-positive ``--poll-interval``/``--timeout``; ``1`` the import job failed,
+did not finish within ``--timeout`` (check ``job_status``/each row's
+``status`` before re-running — see above), or returned a shape the rows
+couldn't be matched against; ``3`` authentication failure; otherwise the
+standard mapping above.
 
 **Example**
 
