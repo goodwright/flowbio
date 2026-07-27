@@ -1191,7 +1191,32 @@ class TestSamplesImport:
         assert result.exit_code == 0
         assert result.stderr == ""
         document = json.loads(result.stdout)
-        assert document["skipped"] == [{"row_number": 2, "reason": "no accession"}]
+        assert document["skipped"] == [
+            {"row_number": 2, "name": None, "reasons": ["no accession"]},
+        ]
+
+    @respx.mock
+    def test_blank_accession_row_with_name_is_identified_by_name(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        respx.post(SAMPLE_IMPORTS_URL).mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
+                1, "RUNNING", ["ERR1"],
+            )),
+        )
+        sheet = _write_import_sheet(
+            tmp_path,
+            {"accession": "ERR1"},
+            {"accession": "", "name": "liver_r2"},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import",
+            "--sheet", str(sheet), "--sample-type", "rna_seq",
+        )
+
+        assert result.exit_code == 0
+        assert "Skipped row 2 (liver_r2)" in result.stderr
 
     @respx.mock
     def test_sheet_with_only_blank_accessions_is_usage_error(
@@ -1264,6 +1289,38 @@ class TestSamplesImportStatus:
 
         assert result.exit_code == 0
         assert "started 2023-11-14" in result.stdout
+
+    @respx.mock
+    def test_out_of_range_timestamp_falls_back_to_raw_value(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json={
+                "id": 42, "status": "RUNNING", "created": 1700000000,
+                "started": 1700000000000, "finished": None,
+                "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
+            }),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "42",
+        )
+
+        assert result.exit_code == 0
+        assert "started 1700000000000" in result.stdout
+
+    @respx.mock
+    def test_completed_job_reports_when_it_finished(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(
+                42, "COMPLETED", ["ERR1"], [101],
+            )),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "42",
+        )
+
+        assert result.exit_code == 0
+        assert "finished 2023-11-14" in result.stdout
 
     @respx.mock
     def test_reports_completed_job_with_sample_ids(self, run_cli) -> None:

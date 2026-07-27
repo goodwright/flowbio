@@ -169,7 +169,7 @@ if the annotation has any warnings.
 .. _sample-imports:
 
 Importing samples from public repositories
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Use :meth:`~flowbio.v2.samples.SampleResource.import_samples` to create
 samples directly from public-repository run or experiment accessions

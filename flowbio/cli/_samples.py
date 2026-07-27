@@ -657,11 +657,12 @@ def _import_command(
             f"Check it has an 'accession' column and at least one filled-in row.",
         )
     for row in skipped:
-        output.emit_advisory(f"Skipped row {row.row_number}: no accession")
+        output.emit_advisory(f"Skipped {_skipped_row_label(row)}: no accession")
     job = client.samples.import_samples(specs)
     document = _job_document(job)
     document["skipped"] = [
-        {"row_number": row.row_number, "reason": "no accession"} for row in skipped
+        {"row_number": row.row_number, "name": row.name, "reasons": ["no accession"]}
+        for row in skipped
     ]
     output.emit_result(
         f"Started import job {job.id} for {len(specs)} accession(s) "
@@ -670,6 +671,11 @@ def _import_command(
         document,
     )
     return ExitCode.SUCCESS
+
+
+def _skipped_row_label(row: AccessionSheetRow) -> str:
+    name_suffix = f" ({row.name})" if row.name else ""
+    return f"row {row.row_number}{name_suffix}"
 
 
 def _import_status_command(
@@ -709,19 +715,29 @@ def _job_document(job: SampleImportJob) -> dict[str, JsonValue]:
 def _job_summary(job: SampleImportJob) -> str:
     if job.status == "COMPLETED":
         ids = ", ".join(str(sample_id) for sample_id in job.sample_ids) or "none"
-        return f"Job {job.id}: COMPLETED. Sample ids: {ids}."
+        return f"Job {job.id}: COMPLETED{_timestamp_suffix('finished', job.finished)}. Sample ids: {ids}."
     if job.status == "FAILED":
         # The error, if any, is on stderr as an advisory (see
         # _import_status_command) rather than repeated here, so a human
         # running this doesn't see the same sentence twice.
-        return f"Job {job.id}: FAILED."
-    if job.started is not None:
-        return f"Job {job.id}: {job.status} (started {_format_timestamp(job.started)})."
-    return f"Job {job.id}: {job.status}."
+        return f"Job {job.id}: FAILED{_timestamp_suffix('finished', job.finished)}."
+    return f"Job {job.id}: {job.status}{_timestamp_suffix('started', job.started)}."
+
+
+def _timestamp_suffix(label: str, timestamp: int | None) -> str:
+    if timestamp is None:
+        return ""
+    return f" ({label} {_format_timestamp(timestamp)})"
 
 
 def _format_timestamp(timestamp: int) -> str:
-    return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    # The API is only known to send Unix-seconds timestamps, but this only
+    # renders a display string — falling back to the raw value on anything
+    # unexpected keeps a formatting surprise from failing a status check.
+    try:
+        return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    except (ValueError, OverflowError, OSError):
+        return str(timestamp)
 
 
 def _merge_metadata(
