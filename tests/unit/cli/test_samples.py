@@ -926,7 +926,7 @@ class TestSamplesUploadBatch:
         assert "CSV" in result.stderr
 
 
-IMPORT_HEADERS = ["accession", "name", "organism", "cell_type", "source", "source__annotation"]
+IMPORT_HEADERS = ["accession", "name", "organism", "sample_type", "cell_type", "source", "source__annotation"]
 
 
 def _write_import_sheet(directory: Path, *records: dict[str, str]) -> Path:
@@ -1008,14 +1008,13 @@ class TestSamplesImport:
         assert document == {
             "id": 42,
             "status": "RUNNING",
-            "created": 1700000000,
+            "created": "2023-11-14T22:13:20Z",
             "started": None,
             "finished": None,
             "accessions": ["ERR1"],
             "sample_ids": [],
             "execution_id": 7,
             "error": None,
-            "skipped": [],
         }
 
     @respx.mock
@@ -1145,16 +1144,18 @@ class TestSamplesImport:
         assert str(sheet) in result.stderr
 
     @respx.mock
-    def test_blank_accession_row_is_skipped(self, run_cli, tmp_path: Path) -> None:
+    def test_row_sample_type_overrides_the_default(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
         route = respx.post(SAMPLE_IMPORTS_URL).mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "RUNNING", ["ERR1"],
+                1, "RUNNING", ["ERR1", "ERR2"],
             )),
         )
         sheet = _write_import_sheet(
             tmp_path,
-            {"accession": "ERR1"},
-            {"accession": ""},
+            {"accession": "ERR1", "sample_type": "chip_seq"},
+            {"accession": "ERR2"},
         )
 
         result = run_cli(
@@ -1164,59 +1165,8 @@ class TestSamplesImport:
 
         assert result.exit_code == 0
         payload = json.loads(route.calls[0].request.content)
-        assert len(payload["imports"]) == 1
-        assert payload["imports"][0]["accession"] == "ERR1"
-        assert "Skipped row 2" in result.stderr
-
-    @respx.mock
-    def test_blank_accession_row_is_reported_in_json_document(
-        self, run_cli, tmp_path: Path,
-    ) -> None:
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "RUNNING", ["ERR1"],
-            )),
-        )
-        sheet = _write_import_sheet(
-            tmp_path,
-            {"accession": "ERR1"},
-            {"accession": ""},
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq", "--json",
-        )
-
-        assert result.exit_code == 0
-        assert result.stderr == ""
-        document = json.loads(result.stdout)
-        assert document["skipped"] == [
-            {"row_number": 2, "name": None, "reasons": ["no accession"]},
-        ]
-
-    @respx.mock
-    def test_blank_accession_row_with_name_is_identified_by_name(
-        self, run_cli, tmp_path: Path,
-    ) -> None:
-        respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "RUNNING", ["ERR1"],
-            )),
-        )
-        sheet = _write_import_sheet(
-            tmp_path,
-            {"accession": "ERR1"},
-            {"accession": "", "name": "liver_r2"},
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import",
-            "--sheet", str(sheet), "--sample-type", "rna_seq",
-        )
-
-        assert result.exit_code == 0
-        assert "Skipped row 2 (liver_r2)" in result.stderr
+        sample_types = [entry["sample_type"] for entry in payload["imports"]]
+        assert sample_types == ["chip_seq", "rna_seq"]
 
     @respx.mock
     def test_sheet_with_only_blank_accessions_is_usage_error(
@@ -1233,6 +1183,27 @@ class TestSamplesImport:
         assert result.exit_code == 2
         assert route.call_count == 0
         assert str(sheet) in result.stderr
+
+    @respx.mock
+    def test_mixed_valid_and_blank_accession_rows_is_usage_error(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        # A blank accession is rejected outright rather than silently
+        # skipped, even when the rest of the sheet is otherwise fine.
+        route = respx.post(SAMPLE_IMPORTS_URL)
+        sheet = _write_import_sheet(
+            tmp_path,
+            {"accession": "ERR1"},
+            {"accession": ""},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import",
+            "--sheet", str(sheet), "--sample-type", "rna_seq",
+        )
+
+        assert result.exit_code == 2
+        assert route.call_count == 0
 
     @respx.mock
     def test_sheet_with_no_accession_column_is_usage_error(
@@ -1291,7 +1262,7 @@ class TestSamplesImportStatus:
         assert "started 2023-11-14" in result.stdout
 
     @respx.mock
-    def test_out_of_range_timestamp_falls_back_to_raw_value(self, run_cli) -> None:
+    def test_millisecond_scale_timestamp_is_parsed_correctly(self, run_cli) -> None:
         respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
                 "id": 42, "status": "RUNNING", "created": 1700000000,
@@ -1305,7 +1276,24 @@ class TestSamplesImportStatus:
         )
 
         assert result.exit_code == 0
-        assert "started 1700000000000" in result.stdout
+        assert "started 2023-11-14" in result.stdout
+
+    @respx.mock
+    def test_running_job_falls_back_to_created_when_not_started(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json={
+                "id": 42, "status": "RUNNING", "created": 1700000000,
+                "started": None, "finished": None,
+                "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
+            }),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "42",
+        )
+
+        assert result.exit_code == 0
+        assert "created 2023-11-14" in result.stdout
 
     @respx.mock
     def test_completed_job_reports_when_it_finished(self, run_cli) -> None:
@@ -1414,9 +1402,9 @@ class TestSamplesImportStatus:
         assert document == {
             "id": 42,
             "status": "COMPLETED",
-            "created": 1700000000,
-            "started": 1700000001,
-            "finished": 1700000002,
+            "created": "2023-11-14T22:13:20Z",
+            "started": "2023-11-14T22:13:21Z",
+            "finished": "2023-11-14T22:13:22Z",
             "accessions": ["ERR1"],
             "sample_ids": [101],
             "execution_id": 7,

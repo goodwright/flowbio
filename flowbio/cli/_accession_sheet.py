@@ -1,17 +1,18 @@
 """CSV accession-sheet parsing for ``samples import``.
 
-An accession sheet is a CSV with one row per accession to import: an
+An accession sheet is a CSV with one row per accession to import: a required
 ``accession`` column (a public-repository run or experiment accession) plus
-optional ``name``/``organism`` and per-accession metadata columns. This
-mirrors ``_sheet.py``'s reads-based sample sheet, but the reserved columns
-differ — there is nothing to upload (no ``reads1``/``reads2``) and the import
-API has no project field, so ``RESERVED_COLUMNS`` is ``accession``, ``name``,
-``organism`` instead.
+optional ``name``/``organism``/``sample_type`` and per-accession metadata
+columns. This mirrors ``_sheet.py``'s reads-based sample sheet, but the
+reserved columns differ — there is nothing to upload (no ``reads1``/
+``reads2``) and the import API has no project field.
 
-Rows are not validated here: the accession format, duplicates, sample type,
-organism, and metadata rules are all checked server-side when the sheet is
-submitted — duplicating that locally would just be a second, driftable copy
-of the same rules.
+Domain rules (accession format, duplicates, sample type, organism, metadata)
+are all checked server-side when the sheet is submitted — duplicating that
+locally would just be a second, driftable copy of the same rules. An
+accession is different: it is the one column every row must have to mean
+anything at all, so a missing one is rejected here rather than silently
+skipped or shipped as an empty string the server would just reject anyway.
 """
 from __future__ import annotations
 
@@ -21,24 +22,40 @@ from pathlib import Path
 
 from flowbio.cli._exit_codes import CliUsageError
 from flowbio.cli._files import existing_file
+from flowbio.v2.samples import SampleImportSpec, SampleTypeId
 
-RESERVED_COLUMNS = ("accession", "name", "organism")
+RESERVED_COLUMNS = ("accession", "name", "organism", "sample_type")
 
 
 @dataclass(frozen=True)
 class AccessionSheetRow:
     """One data row of an accession sheet.
 
-    ``accession`` may be ``None`` (empty cell, or no ``accession`` column at
-    all) — reported by the caller rather than rejected here, so a missing
-    accession is one visible problem instead of an opaque server rejection.
+    ``sample_type`` is only set when the sheet has its own ``sample_type``
+    column for this row; :meth:`to_spec` falls back to the batch's
+    ``--sample-type`` when it's absent.
     """
 
     row_number: int
-    accession: str | None
+    accession: str
     name: str | None
     organism: str | None
+    sample_type: SampleTypeId | None
     metadata: dict[str, str]
+
+    def to_spec(self, default_sample_type: SampleTypeId) -> SampleImportSpec:
+        """Build the :class:`~flowbio.v2.samples.SampleImportSpec` for this row.
+
+        :param default_sample_type: The sample type to use when this row has
+            no ``sample_type`` of its own.
+        """
+        return SampleImportSpec(
+            accession=self.accession,
+            sample_type=self.sample_type or default_sample_type,
+            name=self.name,
+            organism_id=self.organism,
+            metadata=self.metadata or None,
+        )
 
 
 @dataclass(frozen=True)
@@ -46,7 +63,6 @@ class AccessionSheet:
     """A parsed accession sheet."""
 
     path: Path
-    metadata_columns: list[str]
     rows: list[AccessionSheetRow]
 
 
@@ -55,10 +71,11 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
 
     :param path: The accession-sheet file. Must be a ``.csv`` — an ``.xlsx`` or
         ``.tsv`` is a usage error directing the user to export to CSV.
-    :returns: The parsed sheet with reserved/metadata columns separated and
-        empty cells dropped. Values are otherwise passed through unchanged —
-        including ``accession``, sent to the server exactly as entered.
-    :raises CliUsageError: If the file is not a readable ``.csv``.
+    :returns: The parsed sheet, with empty cells dropped. Values are otherwise
+        passed through unchanged — including ``accession``, sent to the
+        server exactly as entered.
+    :raises CliUsageError: If the file is not a readable ``.csv``, has no
+        rows, or has a row with no accession.
     """
     if path.suffix.lower() != ".csv":
         raise CliUsageError(
@@ -79,7 +96,15 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
             _build_row(record, row_number, metadata_columns)
             for row_number, record in enumerate(reader, start=1)
         ]
-    return AccessionSheet(path=path, metadata_columns=metadata_columns, rows=rows)
+    if not rows:
+        raise CliUsageError(f"Accession sheet has no rows: {path}.")
+    missing = [row.row_number for row in rows if not row.accession]
+    if missing:
+        raise CliUsageError(
+            f"Accession sheet row(s) {', '.join(str(number) for number in missing)} "
+            f"have no accession: {path}.",
+        )
+    return AccessionSheet(path=path, rows=rows)
 
 
 def _build_row(
@@ -92,12 +117,14 @@ def _build_row(
     metadata = {
         column: value
         for column in metadata_columns
-        if (value := (record.get(column) or "").strip())
+        if (value := cell(column)) is not None
     }
+    sample_type = cell("sample_type")
     return AccessionSheetRow(
         row_number=row_number,
-        accession=cell("accession"),
+        accession=cell("accession") or "",
         name=cell("name"),
         organism=cell("organism"),
+        sample_type=SampleTypeId(sample_type) if sample_type is not None else None,
         metadata=metadata,
     )

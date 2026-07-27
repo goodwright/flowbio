@@ -11,11 +11,11 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from flowbio.cli._accession_sheet import AccessionSheetRow, parse_accession_sheet
+from flowbio.cli._accession_sheet import parse_accession_sheet
 from flowbio.cli._exit_codes import CliUsageError, ExitCode
 from flowbio.cli._files import existing_file
 from flowbio.cli._output import Output, format_issue
@@ -32,7 +32,6 @@ from flowbio.v2.samples import (
     MetadataAttribute,
     SampleImportJob,
     SampleImportJobId,
-    SampleImportSpec,
     SampleTypeId,
 )
 
@@ -264,14 +263,20 @@ def _configure_import(import_parser: argparse.ArgumentParser) -> None:
         required=True,
         metavar="PATH",
         type=Path,
-        help="CSV accession sheet (accession, optional name/organism, plus metadata columns).",
+        help=(
+            "CSV accession sheet (required accession column, optional "
+            "name/organism/sample_type, plus metadata columns)."
+        ),
     )
     import_parser.add_argument(
         "--sample-type",
         required=True,
         metavar="TYPE",
         type=SampleTypeId,
-        help="Sample type applied to every accession (sent as-is; validated server-side).",
+        help=(
+            "Default sample type (sent as-is; validated server-side), used for any "
+            "row without its own sample_type column."
+        ),
     )
 
 
@@ -623,8 +628,8 @@ def _import_command(
 ) -> ExitCode:
     """Kick off a batch import job from an accession sheet and report its id.
 
-    Every row is submitted as-is: the accession format, duplicates, sample
-    type, organism, and metadata rules are all validated server-side, so a
+    Every row is submitted as-is: the accession format, sample type,
+    organism, and metadata rules are all validated server-side, so a
     malformed sheet surfaces as a normal :class:`FlowApiError` rather than a
     local pre-flight rejection. This command does not wait for the job to
     finish — poll it yourself with ``samples import-status``.
@@ -633,49 +638,19 @@ def _import_command(
     :param client: The authenticated Flow client.
     :param output: The result/error renderer.
     :returns: :attr:`ExitCode.SUCCESS` once the job has been kicked off.
-    :raises CliUsageError: If the sheet is not a readable ``.csv``, or if it
-        has no row with an accession — there is nothing an API call could
-        tell us about either that we can't see already.
+    :raises CliUsageError: If the sheet is not a readable ``.csv``, has no
+        rows, or has a row with no accession.
     """
     sheet = parse_accession_sheet(args.sheet)
-    specs: list[SampleImportSpec] = []
-    skipped: list[AccessionSheetRow] = []
-    for row in sheet.rows:
-        if row.accession is None:
-            skipped.append(row)
-            continue
-        specs.append(SampleImportSpec(
-            accession=row.accession,
-            sample_type=args.sample_type,
-            name=row.name,
-            organism_id=row.organism,
-            metadata=row.metadata or None,
-        ))
-    if not specs:
-        raise CliUsageError(
-            f"Accession sheet has no row with an accession: {args.sheet}. "
-            f"Check it has an 'accession' column and at least one filled-in row.",
-        )
-    for row in skipped:
-        output.emit_advisory(f"Skipped {_skipped_row_label(row)}: no accession")
+    specs = [row.to_spec(args.sample_type) for row in sheet.rows]
     job = client.samples.import_samples(specs)
-    document = _job_document(job)
-    document["skipped"] = [
-        {"row_number": row.row_number, "name": row.name, "reasons": ["no accession"]}
-        for row in skipped
-    ]
     output.emit_result(
         f"Started import job {job.id} for {len(specs)} accession(s) "
         f"(status: {job.status}). Check progress with "
         f"'flowbio samples import-status --job-id {job.id}'.",
-        document,
+        job.model_dump(mode="json"),
     )
     return ExitCode.SUCCESS
-
-
-def _skipped_row_label(row: AccessionSheetRow) -> str:
-    name_suffix = f" ({row.name})" if row.name else ""
-    return f"row {row.row_number}{name_suffix}"
 
 
 def _import_status_command(
@@ -694,22 +669,8 @@ def _import_status_command(
     job = client.samples.get_import(args.job_id)
     if job.status == "FAILED":
         output.emit_advisory(f"Job {job.id} failed: {job.error or 'no error message returned'}")
-    output.emit_result(_job_summary(job), _job_document(job))
+    output.emit_result(_job_summary(job), job.model_dump(mode="json"))
     return ExitCode.RUNTIME if job.status == "FAILED" else ExitCode.SUCCESS
-
-
-def _job_document(job: SampleImportJob) -> dict[str, JsonValue]:
-    return {
-        "id": job.id,
-        "status": job.status,
-        "created": job.created,
-        "started": job.started,
-        "finished": job.finished,
-        "accessions": job.accessions,
-        "sample_ids": job.sample_ids,
-        "execution_id": job.execution_id,
-        "error": job.error,
-    }
 
 
 def _job_summary(job: SampleImportJob) -> str:
@@ -721,23 +682,14 @@ def _job_summary(job: SampleImportJob) -> str:
         # _import_status_command) rather than repeated here, so a human
         # running this doesn't see the same sentence twice.
         return f"Job {job.id}: FAILED{_timestamp_suffix('finished', job.finished)}."
-    return f"Job {job.id}: {job.status}{_timestamp_suffix('started', job.started)}."
+    label = "started" if job.started else "created"
+    return f"Job {job.id}: {job.status}{_timestamp_suffix(label, job.started or job.created)}."
 
 
-def _timestamp_suffix(label: str, timestamp: int | None) -> str:
+def _timestamp_suffix(label: str, timestamp: datetime | None) -> str:
     if timestamp is None:
         return ""
-    return f" ({label} {_format_timestamp(timestamp)})"
-
-
-def _format_timestamp(timestamp: int) -> str:
-    # The API is only known to send Unix-seconds timestamps, but this only
-    # renders a display string — falling back to the raw value on anything
-    # unexpected keeps a formatting surprise from failing a status check.
-    try:
-        return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    except (ValueError, OverflowError, OSError):
-        return str(timestamp)
+    return f" ({label} {timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')})"
 
 
 def _merge_metadata(

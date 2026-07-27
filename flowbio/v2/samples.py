@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NewType
 
@@ -195,12 +196,10 @@ class SampleImportJob(BaseModel, frozen=True):
 
     id: SampleImportJobId = Field(description="Unique identifier for this import job.")
     status: SampleImportStatus = Field(description="The job's current lifecycle state.")
-    created: int | None = Field(default=None, description="Unix timestamp when the job was created.")
-    started: int | None = Field(
-        default=None, description="Unix timestamp when the job started running, if it has.",
-    )
-    finished: int | None = Field(
-        default=None, description="Unix timestamp when the job finished (completed or failed), if it has.",
+    created: datetime | None = Field(default=None, description="When the job was created.")
+    started: datetime | None = Field(default=None, description="When the job started running, if it has.")
+    finished: datetime | None = Field(
+        default=None, description="When the job finished (completed or failed), if it has.",
     )
     accessions: list[str] = Field(description="The accessions submitted with this job, in submission order.")
     sample_ids: list[int] = Field(

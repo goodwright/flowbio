@@ -379,15 +379,17 @@ to every row — no files to upload yourself.
     flowbio samples import --sheet PATH --sample-type TYPE
 
 Run ``flowbio samples import --help`` for the full option list. The sheet is
-a CSV with an ``accession`` column plus optional ``name``/``organism`` and
-metadata columns (there is no ``batch-template`` equivalent for it, since it
-has no reads files or project field). ``name`` defaults to the accession when
-omitted. The sample type, accession format, duplicates, and metadata rules
-are all sent as-is and validated **server-side** — this command only checks
-that the sheet is a readable ``.csv`` with at least one row that has an
-accession; rows without one are dropped (reported by row number on stderr)
-rather than submitted as an empty string. Anything else invalid surfaces as
-a normal API error, not a local rejection.
+a CSV with a required ``accession`` column, plus optional ``name``/
+``organism``/``sample_type`` and metadata columns (there is no
+``batch-template`` equivalent for it, since it has no reads files or project
+field). ``name`` defaults to the accession when omitted. A row's own
+``sample_type`` column, if present, overrides ``--sample-type`` for that row
+only — useful for a mixed-type sheet. The sample type, accession format, and
+metadata rules are all sent as-is and validated **server-side**; this command
+only checks that the sheet is a readable ``.csv`` and that every row has an
+accession — that column is the one thing every row must have to mean
+anything, so a blank cell rejects the whole sheet up front rather than
+shipping an empty string the server would just reject anyway.
 
 Every row is submitted **together as one server-side job**. This command
 does **not wait for it to finish** — it reports the job's id and initial
@@ -397,19 +399,15 @@ to you, e.g. in a shell loop. Building the same thing directly against the
 library instead of the CLI? See :ref:`sample-imports`.
 
 **Output** — human: a confirmation line with the job id and a pointer to
-``import-status``, plus one advisory per skipped row (identified by name if
-it has one). ``--json``: the created job as a single document — ``id``,
-``status``, ``created``/``started``/``finished`` (Unix timestamps, ``null``
-if not yet reached — or if the server response omits one, which the client
-tolerates), ``accessions``, ``sample_ids`` (empty until the job completes),
-``execution_id``, ``error``, and ``skipped`` (``{"row_number": ..., "name":
-..., "reasons": [...]}`` for each dropped row, matching ``upload-batch``'s
-shape, empty if none).
+``import-status``. ``--json``: the created job as a single document —
+``id``, ``status``, ``created``/``started``/``finished`` (ISO 8601
+timestamps, ``null`` if not yet reached), ``accessions``, ``sample_ids``
+(empty until the job completes), ``execution_id``, ``error``.
 
 **Exit codes** — ``0`` the job was created (regardless of its eventual
 outcome — check that with ``import-status``); ``2`` the sheet isn't a
-readable ``.csv``, or has no row with an accession; ``1`` the API rejected
-the batch (e.g. unknown sample type, missing required metadata, an
+readable ``.csv``, has no rows, or has a row with no accession; ``1`` the API
+rejected the batch (e.g. unknown sample type, missing required metadata, an
 unsupported accession format — these come back as an HTTP ``422``; ``5`` in
 the unlikely case it answers ``400`` instead); ``3`` authentication failure;
 otherwise the standard mapping above.
@@ -422,7 +420,7 @@ otherwise the standard mapping above.
     Started import job 42 for 2 accession(s) (status: RUNNING). Check progress with 'flowbio samples import-status --job-id 42'.
 
     $ flowbio samples import --sheet ./accessions.csv --sample-type RNA-Seq --json
-    {"id": 42, "status": "RUNNING", "created": 1712345678, "started": null, "finished": null, "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [], "execution_id": 7, "error": null, "skipped": []}
+    {"id": 42, "status": "RUNNING", "created": "2024-04-05T19:34:38Z", "started": null, "finished": null, "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [], "execution_id": 7, "error": null}
 
 ``samples import-status``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -449,15 +447,16 @@ transient failure (auth, network) breaks the loop instead of being read as
     printf '%s' "$out" | jq -r .status    # COMPLETED / FAILED; empty if the command errored
 
 **Output** — human: a one-line summary including the sample ids and when it
-finished on ``"COMPLETED"``, when it started (if known) on ``"RUNNING"``, or
-— on ``"FAILED"`` — when it finished plus the error as a separate advisory on
-stderr (so it isn't printed twice). ``--json``: the job as a
-single document — ``id``, ``status``, ``created``/``started``/``finished``
-(Unix timestamps, useful for judging how long a job has been running when
-you've resumed polling one from elsewhere), ``accessions``, ``sample_ids``,
-``execution_id``, ``error``. ``--json`` never prints prose to
-stderr (or anywhere but that one stdout document); the failure reason on a
-``"FAILED"`` job is the document's ``error`` field, not a separate message.
+finished on ``"COMPLETED"``, when it started — or, if it hasn't yet, when it
+was created — on ``"RUNNING"``, or — on ``"FAILED"`` — when it finished plus
+the error as a separate advisory on stderr (so it isn't printed twice).
+``--json``: the job as a single document — ``id``, ``status``,
+``created``/``started``/``finished`` (ISO 8601 timestamps, useful for judging
+how long a job has been running when you've resumed polling one from
+elsewhere), ``accessions``, ``sample_ids``, ``execution_id``, ``error``.
+``--json`` never prints prose to stderr (or anywhere but that one stdout
+document); the failure reason on a ``"FAILED"`` job is the document's
+``error`` field, not a separate message.
 
 **Exit codes** — ``0`` the job was fetched and is ``"RUNNING"`` or
 ``"COMPLETED"``; ``1`` either the job was fetched but is ``"FAILED"``, or the
@@ -478,7 +477,7 @@ mapping above.
     Job 42: COMPLETED (finished 2024-04-05 19:38:20 UTC). Sample ids: 101, 102.
 
     $ flowbio samples import-status --job-id 42 --json
-    {"id": 42, "status": "COMPLETED", "created": 1712345678, "started": 1712345680, "finished": 1712345900, "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [101, 102], "execution_id": 7, "error": null}
+    {"id": 42, "status": "COMPLETED", "created": "2024-04-05T19:34:38Z", "started": "2024-04-05T19:34:40Z", "finished": "2024-04-05T19:38:20Z", "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [101, 102], "execution_id": 7, "error": null}
 
 ``api get``
 ~~~~~~~~~~~
