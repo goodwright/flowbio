@@ -96,6 +96,7 @@ def validate_row(
     :returns: One human-readable message per problem, collected so the caller can
         report them all at once.
     """
+    by_identifier = {attribute.identifier: attribute for attribute in attributes}
     errors: list[str] = []
     if not row.name:
         errors.append("missing required value: name")
@@ -106,61 +107,7 @@ def validate_row(
     for label, reads in (("reads1", row.reads1), ("reads2", row.reads2)):
         if reads is not None and not reads.is_file():
             errors.append(f"{label} file not found: {reads}")
-    errors.extend(metadata_errors(row.metadata, attributes, sample_type))
-    return errors
-
-
-def metadata_errors(
-    metadata: dict[str, str],
-    attributes: list[MetadataAttribute],
-    sample_type: SampleTypeId,
-) -> list[str]:
-    """Return every metadata validation problem for ``metadata`` (empty when valid).
-
-    Shared by :func:`validate_row` and the accession-sheet equivalent in
-    :mod:`flowbio.cli._accession_sheet`, since required/closed-option/annotation
-    rules apply identically regardless of what the rest of the row looks like.
-
-    :param metadata: The row's metadata, keyed by attribute identifier (or
-        ``<identifier>__annotation`` for a free-text companion).
-    :param attributes: The server's metadata attributes, deciding required and
-        closed-option columns.
-    :param sample_type: The sample type applied to the whole batch; an attribute
-        required for it must be present.
-    :returns: One human-readable message per problem, collected so the caller can
-        report them all at once.
-    """
-    by_identifier = {attribute.identifier: attribute for attribute in attributes}
-    errors: list[str] = []
-    for attribute in attributes:
-        required = (
-            attribute.required or sample_type in attribute.required_for_sample_types
-        )
-        if required and not metadata.get(attribute.identifier):
-            errors.append(f"missing required metadata: {attribute.identifier}")
-    for key, value in metadata.items():
-        if key.endswith(ANNOTATION_SUFFIX):
-            continue
-        attribute = by_identifier.get(key)
-        if (
-            attribute is not None
-            and attribute.options is not None
-            and value not in attribute.options
-        ):
-            errors.append(
-                f"value '{value}' for {key} is not one of: "
-                f"{', '.join(attribute.options)}",
-            )
-    for key in metadata:
-        if not key.endswith(ANNOTATION_SUFFIX):
-            continue
-        base = key[: -len(ANNOTATION_SUFFIX)]
-        if not metadata.get(base):
-            errors.append(f"{key} set without a value for {base}")
-            continue
-        attribute = by_identifier.get(base)
-        if attribute is not None and not attribute.allow_annotation:
-            errors.append(f"{base} does not allow an annotation")
+    errors.extend(_metadata_errors(row, by_identifier, attributes, sample_type))
     return errors
 
 
@@ -195,3 +142,42 @@ def _resolve(value: str | None, base_dir: Path) -> Path | None:
         return None
     path = Path(value)
     return path if path.is_absolute() else base_dir / path
+
+
+def _metadata_errors(
+    row: SheetRow,
+    by_identifier: dict[str, MetadataAttribute],
+    attributes: list[MetadataAttribute],
+    sample_type: SampleTypeId,
+) -> list[str]:
+    errors: list[str] = []
+    for attribute in attributes:
+        required = (
+            attribute.required or sample_type in attribute.required_for_sample_types
+        )
+        if required and not row.metadata.get(attribute.identifier):
+            errors.append(f"missing required metadata: {attribute.identifier}")
+    for key, value in row.metadata.items():
+        if key.endswith(ANNOTATION_SUFFIX):
+            continue
+        attribute = by_identifier.get(key)
+        if (
+            attribute is not None
+            and attribute.options is not None
+            and value not in attribute.options
+        ):
+            errors.append(
+                f"value '{value}' for {key} is not one of: "
+                f"{', '.join(attribute.options)}",
+            )
+    for key in row.metadata:
+        if not key.endswith(ANNOTATION_SUFFIX):
+            continue
+        base = key[: -len(ANNOTATION_SUFFIX)]
+        if not row.metadata.get(base):
+            errors.append(f"{key} set without a value for {base}")
+            continue
+        attribute = by_identifier.get(base)
+        if attribute is not None and not attribute.allow_annotation:
+            errors.append(f"{base} does not allow an annotation")
+    return errors

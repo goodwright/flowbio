@@ -164,6 +164,17 @@ class SampleImportSpec:
                 metadata={"strandedness": "reverse"},
             ),
         ]
+
+    :param accession: The public-repository run or experiment accession
+        (e.g. ``"ERR1160845"``), validated server-side.
+    :param sample_type: The sample type identifier (e.g. ``"RNA-Seq"``),
+        validated server-side. See :meth:`SampleResource.get_types`.
+    :param name: Optional sample name. Defaults to ``accession`` server-side
+        when omitted.
+    :param organism_id: Optional organism id (e.g. ``"Hs"``) to associate
+        with the sample, sent as ``organism``.
+    :param metadata: Optional metadata key-value pairs. See
+        :ref:`metadata-attributes` for details on required attributes.
     """
 
     accession: str
@@ -186,7 +197,7 @@ class SampleImportJob(BaseModel, frozen=True):
     status: SampleImportStatus = Field(description="The job's current lifecycle state.")
     accessions: list[str] = Field(description="The accessions submitted with this job, in submission order.")
     sample_ids: list[int] = Field(
-        description="The created samples' ids, corresponding to `accessions` once the job has completed.",
+        description="The created samples' ids, corresponding to ``accessions`` once the job has completed.",
     )
     execution_id: int | None = Field(description="The pipeline execution backing this job, if one was created.")
     error: str | None = Field(description='The failure reason, set only when status is "FAILED".')

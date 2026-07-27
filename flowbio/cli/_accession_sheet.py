@@ -50,8 +50,9 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
 
     :param path: The accession-sheet file. Must be a ``.csv`` — an ``.xlsx`` or
         ``.tsv`` is a usage error directing the user to export to CSV.
-    :returns: The parsed sheet with reserved/metadata columns separated,
-        accessions normalised to upper case, and empty cells dropped.
+    :returns: The parsed sheet with reserved/metadata columns separated and
+        empty cells dropped. Values are otherwise passed through unchanged —
+        including ``accession``, sent to the server exactly as entered.
     :raises CliUsageError: If the file is not a readable ``.csv``.
     """
     if path.suffix.lower() != ".csv":
@@ -60,6 +61,9 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
             f"Export your spreadsheet to CSV first.",
         )
     existing_file(path)
+    # utf-8-sig transparently strips a leading BOM, which spreadsheet tools
+    # (notably Excel's "CSV UTF-8" export) prepend — otherwise the first header
+    # parses as "﻿accession" and every row reports a missing accession.
     with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
         headers = reader.fieldnames or []
@@ -85,10 +89,9 @@ def _build_row(
         for column in metadata_columns
         if (value := (record.get(column) or "").strip())
     }
-    accession = cell("accession")
     return AccessionSheetRow(
         row_number=row_number,
-        accession=accession.upper() if accession else "",
+        accession=cell("accession") or "",
         name=cell("name"),
         organism=cell("organism"),
         metadata=metadata,

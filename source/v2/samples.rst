@@ -189,18 +189,19 @@ accession submitted together is tracked as a single job::
 
 The job starts out ``"RUNNING"``. Poll it with
 :meth:`~flowbio.v2.samples.SampleResource.get_import` until its status
-leaves ``"RUNNING"``::
+leaves ``"RUNNING"`` — bound the wait so a stuck job doesn't loop forever::
 
     import time
 
-    while job.status == "RUNNING":
+    deadline = time.monotonic() + 1800  # 30 minutes
+    while job.status == "RUNNING" and time.monotonic() < deadline:
         time.sleep(5)
         job = client.samples.get_import(job.id)
 
     if job.status == "COMPLETED":
         print(f"Imported samples: {job.sample_ids}")
     else:
-        print(f"Import failed: {job.error}")
+        print(f"Import failed or still running: {job.error}")
 
 ``job.accessions`` and ``job.sample_ids`` correspond positionally once the
 job has completed.
@@ -227,5 +228,10 @@ Models
 .. autopydantic_model:: flowbio.v2.samples.MultiplexedUpload
 
 .. autoclass:: flowbio.v2.samples.SampleImportSpec
+   :members:
 
 .. autopydantic_model:: flowbio.v2.samples.SampleImportJob
+
+.. autodata:: flowbio.v2.samples.SampleImportJobId
+
+.. autodata:: flowbio.v2.samples.SampleImportStatus

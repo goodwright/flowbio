@@ -927,6 +927,8 @@ class TestSamplesUploadBatch:
 
 
 IMPORT_HEADERS = ["accession", "name", "organism", "cell_type", "source", "source__annotation"]
+
+
 def _write_import_sheet(directory: Path, *records: dict[str, str]) -> Path:
     path = directory / "accessions.csv"
     with path.open("w", newline="") as handle:
@@ -1017,7 +1019,7 @@ class TestSamplesImport:
         # locally, respx would fail the test for an unmocked request.
         route = respx.post(SAMPLE_IMPORTS_URL).mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
-                1, "RUNNING", ["NOT-AN-ACCESSION", "ERR1", "ERR1"],
+                1, "RUNNING", ["not-an-accession", "ERR1", "ERR1"],
             )),
         )
         sheet = _write_import_sheet(
@@ -1035,7 +1037,7 @@ class TestSamplesImport:
         assert result.exit_code == 0
         payload = json.loads(route.calls[0].request.content)
         assert [entry["accession"] for entry in payload["imports"]] == [
-            "NOT-AN-ACCESSION", "ERR1", "ERR1",
+            "not-an-accession", "ERR1", "ERR1",
         ]
 
     @respx.mock
@@ -1048,7 +1050,7 @@ class TestSamplesImport:
             )),
         )
         sheet = _write_import_sheet(tmp_path, {
-            "accession": "err1", "name": "liver_r1", "organism": "Hs",
+            "accession": "ERR1", "name": "liver_r1", "organism": "Hs",
             "cell_type": "Neuron",
         })
 
@@ -1120,6 +1122,20 @@ class TestSamplesImport:
 
         assert result.exit_code == 2
 
+    @respx.mock
+    def test_header_only_sheet_is_usage_error(self, run_cli, tmp_path: Path) -> None:
+        route = respx.post(SAMPLE_IMPORTS_URL)
+        sheet = _write_import_sheet(tmp_path)
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import",
+            "--sheet", str(sheet), "--sample-type", "rna_seq",
+        )
+
+        assert result.exit_code == 2
+        assert route.call_count == 0
+        assert str(sheet) in result.stderr
+
 
 class TestSamplesImportStatus:
 
@@ -1167,9 +1183,24 @@ class TestSamplesImportStatus:
             "--token", TOKEN, "samples", "import-status", "--job-id", "42",
         )
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         assert "FAILED" in result.stdout
         assert "download failed" in result.stdout
+
+    @respx.mock
+    def test_completed_job_with_no_sample_ids_reports_none(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(
+                42, "COMPLETED", [],
+            )),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "42",
+        )
+
+        assert result.exit_code == 0
+        assert "none" in result.stdout
 
     @respx.mock
     def test_json_document_matches_job_shape(self, run_cli) -> None:

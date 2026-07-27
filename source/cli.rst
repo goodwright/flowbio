@@ -384,8 +384,10 @@ metadata columns (there is no ``batch-template`` equivalent for it, since it
 has no reads files or project field). ``name`` defaults to the accession when
 omitted. The sample type, accession format, duplicates, and metadata rules
 are all sent as-is and validated **server-side** — this command does not
-pre-validate rows itself; an invalid sheet surfaces as a normal API error
-(exit ``5`` or ``1``), not a local rejection.
+pre-validate rows itself (beyond checking the sheet has at least one row); an
+invalid sheet surfaces as a normal API error (exit ``1`` — the API returns
+these as an HTTP ``422``, which isn't one of the codes with its own mapping
+below), not a local rejection.
 
 Every row is submitted **together as one server-side job**. This command
 does **not wait for it to finish** — it reports the job's id and initial
@@ -399,11 +401,10 @@ to you, e.g. in a shell loop.
 completes), ``execution_id``, ``error``.
 
 **Exit codes** — ``0`` the job was created (regardless of its eventual
-outcome — check that with ``import-status``); ``2`` a non-CSV sheet; ``1``
-the API rejected the batch (e.g. unknown sample type, missing required
-metadata, an unsupported accession format — the server returns these as a
-``422``, which isn't one of the exit codes with its own mapping below); ``3``
-authentication failure; otherwise the standard mapping above.
+outcome — check that with ``import-status``); ``2`` a non-CSV or empty sheet;
+``1`` the API rejected the batch (e.g. unknown sample type, missing required
+metadata, an unsupported accession format); ``3`` authentication failure;
+otherwise the standard mapping above.
 
 **Example**
 
@@ -425,18 +426,26 @@ Fetch and report the current state of a ``samples import`` job.
     flowbio samples import-status --job-id ID
 
 Read-only — checking a job's status never changes it. There is no built-in
-polling; run this again (or wrap it in your own loop, e.g. ``watch``) until
-``status`` leaves ``"RUNNING"``.
+polling; run this again (or wrap it in your own loop) until ``status`` leaves
+``"RUNNING"``:
+
+.. code-block:: bash
+
+    until [ "$(flowbio samples import-status --job-id 42 --json | jq -r .status)" != "RUNNING" ]; do
+        sleep 30
+    done
 
 **Output** — human: a one-line summary including the sample ids on
 ``"COMPLETED"`` or the error on ``"FAILED"``. ``--json``: the job as a single
 document — ``id``, ``status``, ``accessions``, ``sample_ids``,
 ``execution_id``, ``error``.
 
-**Exit codes** — ``0`` the job's state was fetched (the job's own ``status``,
-not this command's exit code, reflects whether the import itself succeeded
-or failed); ``4`` no job with that id exists; ``3`` authentication failure;
-otherwise the standard mapping above.
+**Exit codes** — ``0`` the job was fetched and is ``"RUNNING"`` or
+``"COMPLETED"``; ``1`` the job was fetched but is ``"FAILED"`` (so a caller
+can branch on the exit code alone, without parsing ``--json`` output — the
+loop above still needs ``--json``/``jq`` to tell ``"RUNNING"`` from
+``"COMPLETED"``, since both exit ``0``); ``4`` no job with that id exists;
+``3`` authentication failure; otherwise the standard mapping above.
 
 **Example**
 
