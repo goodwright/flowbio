@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from flowbio.cli._accession_sheet import parse_accession_sheet
+from flowbio.cli._accession_sheet import AccessionSheetRow, parse_accession_sheet
 from flowbio.cli._exit_codes import CliUsageError, ExitCode
 from flowbio.cli._files import existing_file
 from flowbio.cli._output import Output, format_issue
@@ -637,31 +637,34 @@ def _import_command(
         tell us about either that we can't see already.
     """
     sheet = parse_accession_sheet(args.sheet)
-    skipped = [row for row in sheet.rows if row.accession is None]
-    if len(skipped) == len(sheet.rows):
+    specs: list[SampleImportSpec] = []
+    skipped: list[AccessionSheetRow] = []
+    for row in sheet.rows:
+        if row.accession is None:
+            skipped.append(row)
+            continue
+        specs.append(SampleImportSpec(
+            accession=row.accession,
+            sample_type=args.sample_type,
+            name=row.name,
+            organism_id=row.organism,
+            metadata=row.metadata or None,
+        ))
+    if not specs:
         raise CliUsageError(
             f"Accession sheet has no row with an accession: {args.sheet}. "
             f"Check it has an 'accession' column and at least one filled-in row.",
         )
     for row in skipped:
         output.emit_advisory(f"Skipped row {row.row_number}: no accession")
-    specs = [
-        SampleImportSpec(
-            accession=row.accession,
-            sample_type=args.sample_type,
-            name=row.name,
-            organism_id=row.organism,
-            metadata=row.metadata or None,
-        )
-        for row in sheet.rows
-        if row.accession is not None
-    ]
     job = client.samples.import_samples(specs)
+    document = _job_document(job)
+    document["skipped"] = [{"row_number": row.row_number} for row in skipped]
     output.emit_result(
         f"Started import job {job.id} for {len(specs)} accession(s) "
         f"(status: {job.status}). Check progress with "
         f"'flowbio samples import-status --job-id {job.id}'.",
-        _job_document(job),
+        document,
     )
     return ExitCode.SUCCESS
 
@@ -690,6 +693,9 @@ def _job_document(job: SampleImportJob) -> dict[str, JsonValue]:
     return {
         "id": job.id,
         "status": job.status,
+        "created": job.created,
+        "started": job.started,
+        "finished": job.finished,
         "accessions": job.accessions,
         "sample_ids": job.sample_ids,
         "execution_id": job.execution_id,

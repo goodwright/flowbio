@@ -944,13 +944,17 @@ def _job_json(
     accessions: list[str],
     sample_ids: list[int] | None = None,
     error: str | None = None,
+    execution_id: int | None = 7,
 ) -> dict:
     return {
         "id": job_id,
         "status": status,
+        "created": 1700000000,
+        "started": 1700000001 if status != "RUNNING" else None,
+        "finished": 1700000002 if status in ("COMPLETED", "FAILED") else None,
         "accessions": accessions,
         "sample_ids": sample_ids or [],
-        "execution_id": 7,
+        "execution_id": execution_id,
         "error": error,
     }
 
@@ -1004,10 +1008,14 @@ class TestSamplesImport:
         assert document == {
             "id": 42,
             "status": "RUNNING",
+            "created": 1700000000,
+            "started": None,
+            "finished": None,
             "accessions": ["ERR1"],
             "sample_ids": [],
             "execution_id": 7,
             "error": None,
+            "skipped": [],
         }
 
     @respx.mock
@@ -1161,6 +1169,31 @@ class TestSamplesImport:
         assert "Skipped row 2" in result.stderr
 
     @respx.mock
+    def test_blank_accession_row_is_reported_in_json_document(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        respx.post(SAMPLE_IMPORTS_URL).mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
+                1, "RUNNING", ["ERR1"],
+            )),
+        )
+        sheet = _write_import_sheet(
+            tmp_path,
+            {"accession": "ERR1"},
+            {"accession": ""},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import",
+            "--sheet", str(sheet), "--sample-type", "rna_seq", "--json",
+        )
+
+        assert result.exit_code == 0
+        assert result.stderr == ""
+        document = json.loads(result.stdout)
+        assert document["skipped"] == [{"row_number": 2}]
+
+    @respx.mock
     def test_sheet_with_only_blank_accessions_is_usage_error(
         self, run_cli, tmp_path: Path,
     ) -> None:
@@ -1307,11 +1340,30 @@ class TestSamplesImportStatus:
         assert document == {
             "id": 42,
             "status": "COMPLETED",
+            "created": 1700000000,
+            "started": 1700000001,
+            "finished": 1700000002,
             "accessions": ["ERR1"],
             "sample_ids": [101],
             "execution_id": 7,
             "error": None,
         }
+
+    @respx.mock
+    def test_reports_job_with_no_execution_yet(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(
+                42, "RUNNING", ["ERR1"], execution_id=None,
+            )),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "42", "--json",
+        )
+
+        assert result.exit_code == 0
+        document = json.loads(result.stdout)
+        assert document["execution_id"] is None
 
     @respx.mock
     def test_unknown_job_id_is_not_found(self, run_cli) -> None:

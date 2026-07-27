@@ -397,8 +397,11 @@ to you, e.g. in a shell loop.
 
 **Output** — human: a confirmation line with the job id and a pointer to
 ``import-status``, plus one advisory per skipped row. ``--json``: the created
-job as a single document — ``id``, ``status``, ``accessions``, ``sample_ids``
-(empty until the job completes), ``execution_id``, ``error``.
+job as a single document — ``id``, ``status``, ``created``/``started``/
+``finished`` (Unix timestamps; the latter two ``null`` until the job reaches
+those stages), ``accessions``, ``sample_ids`` (empty until the job
+completes), ``execution_id``, ``error``, and ``skipped`` (the row numbers of
+any accession-less rows, empty if none).
 
 **Exit codes** — ``0`` the job was created (regardless of its eventual
 outcome — check that with ``import-status``); ``2`` the sheet isn't a
@@ -416,7 +419,7 @@ otherwise the standard mapping above.
     Started import job 42 for 2 accession(s) (status: RUNNING). Check progress with 'flowbio samples import-status --job-id 42'.
 
     $ flowbio samples import --sheet ./accessions.csv --sample-type RNA-Seq --json
-    {"id": 42, "status": "RUNNING", "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [], "execution_id": 7, "error": null}
+    {"id": 42, "status": "RUNNING", "created": 1712345678, "started": null, "finished": null, "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [], "execution_id": 7, "error": null, "skipped": []}
 
 ``samples import-status``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -444,11 +447,13 @@ transient failure (auth, network) breaks the loop instead of being read as
 
 **Output** — human: a one-line summary including the sample ids on
 ``"COMPLETED"``, or — on ``"FAILED"`` — a plain ``FAILED.`` summary plus the
-error as a separate advisory on stderr (so it isn't printed twice). ``--json``
-never prints prose to stderr (or anywhere but the one stdout document); the
-failure reason there is the document's ``error`` field. ``--json``: the job
-as a single document — ``id``, ``status``, ``accessions``, ``sample_ids``,
-``execution_id``, ``error``.
+error as a separate advisory on stderr (so it isn't printed twice). ``--json``:
+the job as a single document — ``id``, ``status``, ``created``/``started``/
+``finished`` (Unix timestamps, useful for judging how long a job has been
+running when you've resumed polling one from elsewhere), ``accessions``,
+``sample_ids``, ``execution_id``, ``error``. ``--json`` never prints prose to
+stderr (or anywhere but that one stdout document); the failure reason on a
+``"FAILED"`` job is the document's ``error`` field, not a separate message.
 
 **Exit codes** — ``0`` the job was fetched and is ``"RUNNING"`` or
 ``"COMPLETED"``; ``1`` either the job was fetched but is ``"FAILED"``, or the
