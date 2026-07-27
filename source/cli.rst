@@ -397,13 +397,14 @@ to you, e.g. in a shell loop. Building the same thing directly against the
 library instead of the CLI? See :ref:`sample-imports`.
 
 **Output** — human: a confirmation line with the job id and a pointer to
-``import-status``, plus one advisory per skipped row. ``--json``: the created
-job as a single document — ``id``, ``status``, ``created``/``started``/
-``finished`` (Unix timestamps, ``null`` if not yet reached — or if the server
-response omits one, which the client tolerates), ``accessions``,
-``sample_ids`` (empty until the job completes), ``execution_id``, ``error``,
-and ``skipped`` (``{"row_number": ..., "reason": "no accession"}`` for each
-dropped row, empty if none).
+``import-status``, plus one advisory per skipped row (identified by name if
+it has one). ``--json``: the created job as a single document — ``id``,
+``status``, ``created``/``started``/``finished`` (Unix timestamps, ``null``
+if not yet reached — or if the server response omits one, which the client
+tolerates), ``accessions``, ``sample_ids`` (empty until the job completes),
+``execution_id``, ``error``, and ``skipped`` (``{"row_number": ..., "name":
+..., "reasons": [...]}`` for each dropped row, matching ``upload-batch``'s
+shape, empty if none).
 
 **Exit codes** — ``0`` the job was created (regardless of its eventual
 outcome — check that with ``import-status``); ``2`` the sheet isn't a
@@ -447,10 +448,10 @@ transient failure (auth, network) breaks the loop instead of being read as
     done
     printf '%s' "$out" | jq -r .status    # COMPLETED / FAILED; empty if the command errored
 
-**Output** — human: a one-line summary including the sample ids on
-``"COMPLETED"``, when it started (if known) on ``"RUNNING"``, or — on
-``"FAILED"`` — a plain ``FAILED.`` summary plus the error as a separate
-advisory on stderr (so it isn't printed twice). ``--json``: the job as a
+**Output** — human: a one-line summary including the sample ids and when it
+finished on ``"COMPLETED"``, when it started (if known) on ``"RUNNING"``, or
+— on ``"FAILED"`` — when it finished plus the error as a separate advisory on
+stderr (so it isn't printed twice). ``--json``: the job as a
 single document — ``id``, ``status``, ``created``/``started``/``finished``
 (Unix timestamps, useful for judging how long a job has been running when
 you've resumed polling one from elsewhere), ``accessions``, ``sample_ids``,
@@ -474,7 +475,7 @@ mapping above.
 .. code-block:: bash
 
     $ flowbio samples import-status --job-id 42
-    Job 42: COMPLETED. Sample ids: 101, 102.
+    Job 42: COMPLETED (finished 2024-04-05 19:38:20 UTC). Sample ids: 101, 102.
 
     $ flowbio samples import-status --job-id 42 --json
     {"id": 42, "status": "COMPLETED", "created": 1712345678, "started": 1712345680, "finished": 1712345900, "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [101, 102], "execution_id": 7, "error": null}
