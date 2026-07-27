@@ -110,39 +110,6 @@ def validate_row(
     return errors
 
 
-def _build_row(
-    record: dict[str, str],
-    row_number: int,
-    base_dir: Path,
-    metadata_columns: list[str],
-) -> SheetRow:
-    def cell(column: str) -> str | None:
-        value = (record.get(column) or "").strip()
-        return value or None
-
-    metadata = {
-        column: value
-        for column in metadata_columns
-        if (value := (record.get(column) or "").strip())
-    }
-    return SheetRow(
-        row_number=row_number,
-        name=cell("name") or "",
-        reads1=_resolve(cell("reads1"), base_dir),
-        reads2=_resolve(cell("reads2"), base_dir),
-        project=cell("project"),
-        organism=cell("organism"),
-        metadata=metadata,
-    )
-
-
-def _resolve(value: str | None, base_dir: Path) -> Path | None:
-    if value is None:
-        return None
-    path = Path(value)
-    return path if path.is_absolute() else base_dir / path
-
-
 def metadata_errors(
     metadata: dict[str, str],
     attributes: list[MetadataAttribute],
@@ -195,3 +162,36 @@ def metadata_errors(
         if attribute is not None and not attribute.allow_annotation:
             errors.append(f"{base} does not allow an annotation")
     return errors
+
+
+def _build_row(
+    record: dict[str, str],
+    row_number: int,
+    base_dir: Path,
+    metadata_columns: list[str],
+) -> SheetRow:
+    def cell(column: str) -> str | None:
+        value = (record.get(column) or "").strip()
+        return value or None
+
+    metadata = {
+        column: value
+        for column in metadata_columns
+        if (value := (record.get(column) or "").strip())
+    }
+    return SheetRow(
+        row_number=row_number,
+        name=cell("name") or "",
+        reads1=_resolve(cell("reads1"), base_dir),
+        reads2=_resolve(cell("reads2"), base_dir),
+        project=cell("project"),
+        organism=cell("organism"),
+        metadata=metadata,
+    )
+
+
+def _resolve(value: str | None, base_dir: Path) -> Path | None:
+    if value is None:
+        return None
+    path = Path(value)
+    return path if path.is_absolute() else base_dir / path
