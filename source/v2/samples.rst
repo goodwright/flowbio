@@ -200,8 +200,10 @@ leaves ``"RUNNING"`` — bound the wait so a stuck job doesn't loop forever::
 
     if job.status == "COMPLETED":
         print(f"Imported samples: {job.sample_ids}")
+    elif job.status == "FAILED":
+        print(f"Import failed: {job.error}")
     else:
-        print(f"Import failed or still running: {job.error}")
+        print(f"Import did not finish within the deadline (status: {job.status})")
 
 ``job.accessions`` and ``job.sample_ids`` correspond positionally once the
 job has completed.

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from flowbio.cli._accession_sheet import parse_accession_sheet
+from flowbio.cli._accession_sheet import AccessionSheetRow, parse_accession_sheet
 from flowbio.cli._exit_codes import CliUsageError
 from flowbio.v2.samples import SampleImportSpec, SampleTypeId
 
@@ -139,6 +139,18 @@ class TestParseAccessionSheet:
             ))
 
 
+def test_row_rejects_empty_accession_by_construction() -> None:
+    with pytest.raises(ValueError, match="accession"):
+        AccessionSheetRow(
+            row_number=1,
+            accession="",
+            name=None,
+            organism=None,
+            sample_type=None,
+            metadata={},
+        )
+
+
 class TestAccessionSheetRowToSpec:
 
     def _row(self, tmp_path: Path, **overrides: str):
@@ -160,6 +172,19 @@ class TestAccessionSheetRowToSpec:
         spec = row.to_spec(SampleTypeId("rna_seq"))
 
         assert spec.sample_type == "chip_seq"
+
+    def test_blank_sample_type_cell_falls_back_to_default(self, tmp_path: Path) -> None:
+        row = self._row(tmp_path, sample_type="")
+
+        spec = row.to_spec(SampleTypeId("rna_seq"))
+
+        assert spec.sample_type == "rna_seq"
+
+    def test_raises_when_no_sample_type_or_default_available(self, tmp_path: Path) -> None:
+        row = self._row(tmp_path)
+
+        with pytest.raises(ValueError, match="sample_type"):
+            row.to_spec(None)
 
     def test_carries_name_organism_and_metadata(self, tmp_path: Path) -> None:
         row = self._row(tmp_path, name="liver_r1", organism="Hs", cell_type="Neuron")

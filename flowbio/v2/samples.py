@@ -201,8 +201,11 @@ class SampleImportJob(BaseModel, frozen=True):
     finished: datetime | None = Field(
         default=None, description="When the job finished (completed or failed), if it has.",
     )
-    accessions: list[str] = Field(description="The accessions submitted with this job, in submission order.")
+    accessions: list[str] = Field(
+        default_factory=list, description="The accessions submitted with this job, in submission order.",
+    )
     sample_ids: list[int] = Field(
+        default_factory=list,
         description="The created samples' ids, corresponding to ``accessions`` once the job has completed.",
     )
     execution_id: int | None = Field(

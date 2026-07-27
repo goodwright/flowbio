@@ -47,15 +47,22 @@ class AccessionSheetRow:
         if not self.accession:
             raise ValueError("accession must not be empty")
 
-    def to_spec(self, default_sample_type: SampleTypeId) -> SampleImportSpec:
+    def to_spec(self, default_sample_type: SampleTypeId | None) -> SampleImportSpec:
         """Build the :class:`~flowbio.v2.samples.SampleImportSpec` for this row.
 
         :param default_sample_type: The sample type to use when this row has
             no ``sample_type`` of its own.
+        :raises ValueError: If this row has no ``sample_type`` of its own and
+            ``default_sample_type`` is ``None``.
         """
+        sample_type = self.sample_type or default_sample_type
+        if sample_type is None:
+            raise ValueError(
+                f"row {self.row_number} has no sample_type and no default was given",
+            )
         return SampleImportSpec(
             accession=self.accession,
-            sample_type=self.sample_type or default_sample_type,
+            sample_type=sample_type,
             name=self.name,
             organism_id=self.organism,
             metadata=self.metadata or None,
@@ -75,9 +82,10 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
 
     :param path: The accession-sheet file. Must be a ``.csv`` — an ``.xlsx`` or
         ``.tsv`` is a usage error directing the user to export to CSV.
-    :returns: The parsed sheet, with empty cells dropped. Values are otherwise
-        passed through unchanged — including ``accession``, sent to the
-        server exactly as entered.
+    :returns: The parsed sheet, with empty cells dropped (other than
+        ``accession``, which rejects the sheet instead — see below). Values
+        are otherwise passed through unchanged, including ``accession``, sent
+        to the server exactly as entered.
     :raises CliUsageError: If the file is not a readable ``.csv``, has no
         rows, or has a row with no accession.
     """
@@ -99,9 +107,14 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         records = list(enumerate(reader, start=1))
     if not records:
         raise CliUsageError(f"Accession sheet has no rows: {path}.")
-    missing = [
-        row_number for row_number, record in records if not _cell(record, "accession")
-    ]
+    rows: list[AccessionSheetRow] = []
+    missing: list[int] = []
+    for row_number, record in records:
+        accession = _cell(record, "accession")
+        if accession is None:
+            missing.append(row_number)
+        else:
+            rows.append(_build_row(record, row_number, metadata_columns, accession))
     if missing:
         numbers = ", ".join(str(number) for number in missing)
         # Data row 1 is the first row after the header, matching _sheet.py's
@@ -110,14 +123,6 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         raise CliUsageError(
             f"Accession sheet data row(s) {numbers} {verb} no accession: {path}.",
         )
-    # The walrus filter is a no-op here: parse_accession_sheet already raised
-    # above if any record lacked an accession. Filtering on it (rather than
-    # asserting) is what gives the accession its narrowed str type below.
-    rows = [
-        _build_row(record, row_number, metadata_columns, accession)
-        for row_number, record in records
-        if (accession := _cell(record, "accession")) is not None
-    ]
     return AccessionSheet(path=path, rows=rows)
 
 

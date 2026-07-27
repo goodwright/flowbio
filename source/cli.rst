@@ -376,7 +376,7 @@ to every row — no files to upload yourself.
 
 ::
 
-    flowbio samples import --sheet PATH --sample-type TYPE
+    flowbio samples import --sheet PATH [--sample-type TYPE]
 
 Run ``flowbio samples import --help`` for the full option list. The sheet is
 a CSV with a required ``accession`` column, plus optional ``name``/
@@ -386,14 +386,16 @@ field; note ``sample_type`` is reserved for the per-row override, so a
 metadata attribute of that exact name can't be sent through the sheet).
 ``name`` defaults to the accession when omitted. A row's own ``sample_type``
 column, if present, overrides ``--sample-type`` for that row only — useful
-for a mixed-type sheet. The sample type, accession format, and metadata
-rules are all sent as-is and validated **server-side**; this command only
-checks that the sheet is a readable ``.csv`` and that every row has an
-accession — that column is the one thing every row must have to mean
-anything, so a blank cell rejects the whole sheet up front rather than
-shipping an empty string the server would just reject anyway. Rows are
-counted from ``1`` for the first data row, after the header (the same
-convention as ``upload-batch``'s ``row_number``).
+for a mixed-type sheet; ``--sample-type`` itself is only required if some
+row has no ``sample_type`` column of its own. The sample type, accession
+format, and metadata rules are all sent as-is and validated **server-side**;
+this command only checks that the sheet is a readable ``.csv``, that every
+row has an accession, and that every row can resolve a sample type (its own
+column, or ``--sample-type``) — a blank ``accession`` cell or a row with
+neither rejects the whole sheet up front rather than shipping something the
+server would just reject anyway. Rows are counted from ``1`` for the first
+data row, after the header (the same convention as ``upload-batch``'s
+``row_number``).
 
 Every row is submitted **together as one server-side job**. This command
 does **not wait for it to finish** — it reports the job's id and initial
@@ -410,11 +412,12 @@ timestamps, ``null`` if not yet reached), ``accessions``, ``sample_ids``
 
 **Exit codes** — ``0`` the job was created (regardless of its eventual
 outcome — check that with ``import-status``); ``2`` the sheet isn't a
-readable ``.csv``, has no rows, or has a row with no accession; ``1`` the API
-rejected the batch (e.g. unknown sample type, missing required metadata, an
-unsupported accession format — these come back as an HTTP ``422``; ``5`` in
-the unlikely case it answers ``400`` instead); ``3`` authentication failure;
-otherwise the standard mapping above.
+readable ``.csv``, has no rows, has a row with no accession, or has a row
+with no resolvable sample type; ``1`` the API rejected the batch (e.g.
+unknown sample type, missing required metadata, an unsupported accession
+format — these come back as an HTTP ``422``; ``5`` in the unlikely case it
+answers ``400`` instead); ``3`` authentication failure; otherwise the
+standard mapping above.
 
 **Example**
 

@@ -1247,15 +1247,11 @@ class TestGetImport:
             client.samples.get_import(SampleImportJobId(999))
 
     @respx.mock
-    def test_parses_job_missing_timestamps(self) -> None:
+    def test_parses_job_with_only_id_and_status(self) -> None:
         respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
                 "id": 42,
                 "status": "RUNNING",
-                "accessions": ["ERR1"],
-                "sample_ids": [],
-                "execution_id": None,
-                "error": None,
             }),
         )
 
@@ -1265,20 +1261,7 @@ class TestGetImport:
         assert result.created is None
         assert result.started is None
         assert result.finished is None
-
-    @respx.mock
-    def test_parses_job_missing_execution_id_and_error(self) -> None:
-        respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
-            return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": 42,
-                "status": "RUNNING",
-                "accessions": ["ERR1"],
-                "sample_ids": [],
-            }),
-        )
-
-        client = Client()
-        result = client.samples.get_import(SampleImportJobId(42))
-
+        assert result.accessions == []
+        assert result.sample_ids == []
         assert result.execution_id is None
         assert result.error is None
