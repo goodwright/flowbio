@@ -629,8 +629,12 @@ def _import_command(
     :param client: The authenticated Flow client.
     :param output: The result/error renderer.
     :returns: :attr:`ExitCode.SUCCESS` once the job has been kicked off.
+    :raises CliUsageError: If the sheet has no rows — there is nothing an
+        API call could tell us about an empty sheet that we can't see already.
     """
     sheet = parse_accession_sheet(args.sheet)
+    if not sheet.rows:
+        raise CliUsageError(f"Accession sheet has no rows: {args.sheet}")
     specs = [
         SampleImportSpec(
             accession=row.accession,
@@ -659,13 +663,14 @@ def _import_status_command(
     :param args: Parsed command-line arguments.
     :param client: The authenticated Flow client.
     :param output: The result/error renderer.
-    :returns: :attr:`ExitCode.SUCCESS` once the job's state has been fetched
-        (the job's own ``status`` — not this command's exit code — reflects
-        whether the import itself succeeded).
+    :returns: :attr:`ExitCode.SUCCESS` once the job's state has been fetched,
+        unless the job itself is ``"FAILED"``, in which case
+        :attr:`ExitCode.RUNTIME` — so a caller polling this command can
+        branch on its exit code alone, without parsing ``--json`` output.
     """
     job = client.samples.get_import(args.job_id)
     output.emit_result(_job_summary(job), _job_document(job))
-    return ExitCode.SUCCESS
+    return ExitCode.RUNTIME if job.status == "FAILED" else ExitCode.SUCCESS
 
 
 def _job_document(job: SampleImportJob) -> dict[str, JsonValue]:
@@ -681,14 +686,12 @@ def _job_document(job: SampleImportJob) -> dict[str, JsonValue]:
 
 def _job_summary(job: SampleImportJob) -> str:
     if job.status == "COMPLETED":
-        ids = ", ".join(str(sample_id) for sample_id in job.sample_ids)
+        ids = ", ".join(str(sample_id) for sample_id in job.sample_ids) or "none"
         return f"Job {job.id}: COMPLETED. Sample ids: {ids}."
     if job.status == "FAILED":
         detail = f" {job.error}" if job.error else ""
         return f"Job {job.id}: FAILED.{detail}"
     return f"Job {job.id}: {job.status}."
-
-
 
 
 def _merge_metadata(

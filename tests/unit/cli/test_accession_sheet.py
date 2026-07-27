@@ -29,12 +29,12 @@ class TestParseAccessionSheet:
 
         assert sheet.metadata_columns == ["cell_type", "source", "source__annotation"]
 
-    def test_accession_is_normalised_to_upper_case(self, tmp_path: Path) -> None:
+    def test_accession_is_passed_through_unchanged(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(
             _write_sheet(tmp_path, {"accession": "err1160845"}),
         )
 
-        assert sheet.rows[0].accession == "ERR1160845"
+        assert sheet.rows[0].accession == "err1160845"
 
     def test_empty_cells_omitted_from_metadata(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(_write_sheet(
