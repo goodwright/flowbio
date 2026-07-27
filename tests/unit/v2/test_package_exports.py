@@ -20,6 +20,18 @@ class TestTopLevelExports:
 
         assert UsernamePasswordCredentials is DirectCredentials
 
+    def test_sample_import_types_are_exported(self) -> None:
+        from flowbio.v2 import SampleImportJob, SampleImportJobId, SampleImportSpec
+        from flowbio.v2.samples import (
+            SampleImportJob as DirectJob,
+            SampleImportJobId as DirectJobId,
+            SampleImportSpec as DirectSpec,
+        )
+
+        assert SampleImportSpec is DirectSpec
+        assert SampleImportJob is DirectJob
+        assert SampleImportJobId is DirectJobId
+
 
 class TestSubmoduleExports:
 

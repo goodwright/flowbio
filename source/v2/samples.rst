@@ -176,7 +176,7 @@ samples directly from public-repository run or experiment accessions
 (SRR/ERR/DRR or SRX/ERX/DRX), instead of uploading files yourself. Every
 accession submitted together is tracked as a single job::
 
-    from flowbio.v2.samples import SampleImportSpec
+    from flowbio.v2 import SampleImportSpec
 
     job = client.samples.import_samples([
         SampleImportSpec(accession="ERR1160845", sample_type="RNA-Seq"),
