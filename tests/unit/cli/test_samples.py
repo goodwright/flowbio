@@ -1120,7 +1120,9 @@ class TestSamplesImport:
 
         assert result.exit_code == 2
 
+    @respx.mock
     def test_missing_sample_type_is_usage_error(self, run_cli, tmp_path: Path) -> None:
+        route = respx.post(SAMPLE_IMPORTS_URL)
         sheet = _write_import_sheet(tmp_path, {"accession": "ERR1"})
 
         result = run_cli(
@@ -1128,6 +1130,7 @@ class TestSamplesImport:
         )
 
         assert result.exit_code == 2
+        assert route.call_count == 0
 
     @respx.mock
     def test_header_only_sheet_is_usage_error(self, run_cli, tmp_path: Path) -> None:
@@ -1209,7 +1212,7 @@ class TestSamplesImport:
 
         assert result.exit_code == 2
         assert route.call_count == 0
-        assert "2" in result.stderr
+        assert "data row(s) 2" in result.stderr
 
     @respx.mock
     def test_sheet_with_only_blank_accessions_is_usage_error(
@@ -1337,6 +1340,24 @@ class TestSamplesImportStatus:
 
         assert result.exit_code == 0
         assert "started 2024-04-05 19:34:38 UTC" in result.stdout
+
+    @respx.mock
+    def test_naive_started_is_reported_as_utc_in_json_too(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json={
+                "id": 42, "status": "RUNNING", "created": 1700000000,
+                "started": "2024-04-05T19:34:38", "finished": None,
+                "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
+            }),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "42", "--json",
+        )
+
+        assert result.exit_code == 0
+        document = json.loads(result.stdout)
+        assert document["started"] == "2024-04-05T19:34:38Z"
 
     @respx.mock
     def test_running_job_falls_back_to_created_when_not_started(self, run_cli) -> None:
