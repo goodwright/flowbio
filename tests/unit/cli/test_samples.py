@@ -1136,6 +1136,65 @@ class TestSamplesImport:
         assert route.call_count == 0
         assert str(sheet) in result.stderr
 
+    @respx.mock
+    def test_blank_accession_row_is_skipped(self, run_cli, tmp_path: Path) -> None:
+        route = respx.post(SAMPLE_IMPORTS_URL).mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
+                1, "RUNNING", ["ERR1"],
+            )),
+        )
+        sheet = _write_import_sheet(
+            tmp_path,
+            {"accession": "ERR1"},
+            {"accession": ""},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import",
+            "--sheet", str(sheet), "--sample-type", "rna_seq",
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(route.calls[0].request.content)
+        assert len(payload["imports"]) == 1
+        assert payload["imports"][0]["accession"] == "ERR1"
+
+    @respx.mock
+    def test_sheet_with_only_blank_accessions_is_usage_error(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        route = respx.post(SAMPLE_IMPORTS_URL)
+        sheet = _write_import_sheet(tmp_path, {"accession": ""}, {"accession": ""})
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import",
+            "--sheet", str(sheet), "--sample-type", "rna_seq",
+        )
+
+        assert result.exit_code == 2
+        assert route.call_count == 0
+        assert str(sheet) in result.stderr
+
+    @respx.mock
+    def test_sheet_with_no_accession_column_is_usage_error(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        route = respx.post(SAMPLE_IMPORTS_URL)
+        sheet = tmp_path / "accessions.csv"
+        with sheet.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=["run", "name"])
+            writer.writeheader()
+            writer.writerow({"run": "ERR1160845", "name": "liver_r1"})
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import",
+            "--sheet", str(sheet), "--sample-type", "rna_seq",
+        )
+
+        assert result.exit_code == 2
+        assert route.call_count == 0
+        assert str(sheet) in result.stderr
+
 
 class TestSamplesImportStatus:
 
@@ -1186,12 +1245,39 @@ class TestSamplesImportStatus:
         assert result.exit_code == 1
         assert "FAILED" in result.stdout
         assert "download failed" in result.stdout
+        assert "download failed" in result.stderr
+
+    @respx.mock
+    def test_failed_job_json_mode_has_error_on_stdout_only(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json=_job_json(
+                42, "FAILED", ["ERR1"], error="download failed",
+            )),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "42", "--json",
+        )
+
+        assert result.exit_code == 1
+        assert result.stderr == ""
+        document = json.loads(result.stdout)
+        assert document["error"] == "download failed"
+
+    def test_non_numeric_job_id_reports_clear_message(self, run_cli) -> None:
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "not-a-number",
+        )
+
+        assert result.exit_code == 2
+        assert "_job_id" not in result.stderr
+        assert "job id" in result.stderr.lower()
 
     @respx.mock
     def test_completed_job_with_no_sample_ids_reports_none(self, run_cli) -> None:
         respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json=_job_json(
-                42, "COMPLETED", [],
+                42, "COMPLETED", ["ERR1"], [],
             )),
         )
 
@@ -1242,12 +1328,5 @@ class TestSamplesImportStatus:
 
     def test_missing_job_id_is_usage_error(self, run_cli) -> None:
         result = run_cli("--token", TOKEN, "samples", "import-status")
-
-        assert result.exit_code == 2
-
-    def test_non_numeric_job_id_is_usage_error(self, run_cli) -> None:
-        result = run_cli(
-            "--token", TOKEN, "samples", "import-status", "--job-id", "not-a-number",
-        )
 
         assert result.exit_code == 2

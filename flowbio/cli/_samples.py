@@ -275,7 +275,10 @@ def _configure_import(import_parser: argparse.ArgumentParser) -> None:
 
 
 def _job_id(value: str) -> SampleImportJobId:
-    return SampleImportJobId(int(value))
+    try:
+        return SampleImportJobId(int(value))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"job id must be an integer, got {value!r}") from None
 
 
 def _configure_import_status(import_status: argparse.ArgumentParser) -> None:
@@ -629,12 +632,17 @@ def _import_command(
     :param client: The authenticated Flow client.
     :param output: The result/error renderer.
     :returns: :attr:`ExitCode.SUCCESS` once the job has been kicked off.
-    :raises CliUsageError: If the sheet has no rows — there is nothing an
-        API call could tell us about an empty sheet that we can't see already.
+    :raises CliUsageError: If the sheet is not a readable ``.csv``, or if it
+        has no row with an accession — there is nothing an API call could
+        tell us about either that we can't see already.
     """
     sheet = parse_accession_sheet(args.sheet)
-    if not sheet.rows:
-        raise CliUsageError(f"Accession sheet has no rows: {args.sheet}")
+    rows = [row for row in sheet.rows if row.accession]
+    if not rows:
+        raise CliUsageError(
+            f"Accession sheet has no row with an accession: {args.sheet}. "
+            f"Check it has an 'accession' column and at least one filled-in row.",
+        )
     specs = [
         SampleImportSpec(
             accession=row.accession,
@@ -643,11 +651,11 @@ def _import_command(
             organism_id=row.organism,
             metadata=row.metadata or None,
         )
-        for row in sheet.rows
+        for row in rows
     ]
     job = client.samples.import_samples(specs)
     output.emit_result(
-        f"Started import job {job.id} for {len(job.accessions)} accession(s) "
+        f"Started import job {job.id} for {len(specs)} accession(s) "
         f"(status: {job.status}). Check progress with "
         f"'flowbio samples import-status --job-id {job.id}'.",
         _job_document(job),
@@ -669,6 +677,8 @@ def _import_status_command(
         branch on its exit code alone, without parsing ``--json`` output.
     """
     job = client.samples.get_import(args.job_id)
+    if job.status == "FAILED":
+        output.emit_advisory(f"Job {job.id} failed: {job.error or 'no error message returned'}")
     output.emit_result(_job_summary(job), _job_document(job))
     return ExitCode.RUNTIME if job.status == "FAILED" else ExitCode.SUCCESS
 
