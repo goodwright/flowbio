@@ -395,14 +395,19 @@ By default any invalid row aborts the whole run (exit ``2``);
 Unlike ``upload-batch``, every valid row is submitted **together as one
 server-side job** — there is no per-row upload loop. The command polls that
 job (every ``--poll-interval`` seconds, default 5, for up to ``--timeout``
-seconds, default 1800) until it leaves ``"RUNNING"``. Once the job completes,
-every submitted row is reported as imported; if it fails or times out, every
-row is reported as failed with the same message, since the job has one
-outcome for the whole batch.
+seconds, default 1800; both must be positive) until it leaves ``"RUNNING"``.
+Once the job completes, every submitted row is reported as imported; if it
+fails or times out, every row is reported as failed with the same message
+(and the sample id, if the job did partially create one before failing),
+since the job has one outcome for the whole batch. Either way, the job's
+``job_id`` is included in the output so a timed-out or interrupted run can be
+resumed with ``client.samples.get_import(job_id)`` from the library.
 
 **Output** — human: each row's outcome on stderr, then a final counts summary
 on stdout. ``--json``: a single document on stdout with ``imported``,
-``failed``, and ``skipped`` lists plus a ``counts`` summary:
+``failed``, and ``skipped`` lists, a ``counts`` summary, and the job's
+``job_id``/``job_status``/``execution_id`` (``null`` when no job was created,
+e.g. every row was invalid or skipped):
 
 .. code-block:: json
 
@@ -410,13 +415,15 @@ on stdout. ``--json``: a single document on stdout with ``imported``,
       "imported": [{"row_number": 1, "accession": "ERR1160845", "sample_id": 101}],
       "failed":   [],
       "skipped":  [{"row_number": 2, "accession": "bogus", "reasons": ["..."]}],
-      "counts":   {"imported": 1, "failed": 0, "skipped": 1}
+      "counts":   {"imported": 1, "failed": 0, "skipped": 1},
+      "job_id": 42, "job_status": "COMPLETED", "execution_id": 7
     }
 
 **Exit codes** — ``0`` the import job completed; ``2`` a pre-flight
-validation failure (without ``--skip-invalid``) or a non-CSV sheet; ``1`` the
-import job failed or did not finish within ``--timeout``; ``3``
-authentication failure; otherwise the standard mapping above.
+validation failure (without ``--skip-invalid``), a non-CSV sheet, or a
+non-positive ``--poll-interval``/``--timeout``; ``1`` the import job failed
+or did not finish within ``--timeout``; ``3`` authentication failure;
+otherwise the standard mapping above.
 
 **Example**
 
@@ -428,7 +435,7 @@ authentication failure; otherwise the standard mapping above.
     Imported 2, failed 0, skipped 0.
 
     $ flowbio samples import --sheet ./accessions.csv --sample-type RNA-Seq --json
-    {"imported": [{"row_number": 1, "accession": "ERR1160845", "sample_id": 101}], "failed": [], "skipped": [], "counts": {"imported": 1, "failed": 0, "skipped": 0}}
+    {"imported": [{"row_number": 1, "accession": "ERR1160845", "sample_id": 101}], "failed": [], "skipped": [], "counts": {"imported": 1, "failed": 0, "skipped": 0}, "job_id": 42, "job_status": "COMPLETED", "execution_id": 7}
 
 ``api get``
 ~~~~~~~~~~~
