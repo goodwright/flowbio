@@ -32,7 +32,6 @@ from flowbio.v2.samples import (
     MetadataAttribute,
     SampleImportJob,
     SampleImportJobId,
-    SampleImportSpec,
     SampleTypeId,
 )
 
@@ -633,7 +632,7 @@ def _import_command(
         rows, or has a row with no accession or no sample_type.
     """
     sheet = parse_accession_sheet(args.sheet)
-    specs: list[SampleImportSpec] = [row.to_spec() for row in sheet.rows]
+    specs = [row.to_spec() for row in sheet.rows]
     job = client.samples.import_samples(specs)
     output.emit_result(
         f"Started import job {job.id} for {len(specs)} accession(s) "

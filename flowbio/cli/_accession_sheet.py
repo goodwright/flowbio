@@ -106,19 +106,25 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
             missing_sample_type.append(row_number)
         if accession is not None and sample_type is not None:
             rows.append(_build_row(record, row_number, metadata_columns, accession, sample_type))
-    if missing_accession:
-        raise _missing_column_error("accession", missing_accession, path)
-    if missing_sample_type:
-        raise _missing_column_error("sample_type", missing_sample_type, path)
+    if missing_accession or missing_sample_type:
+        clauses = [
+            clause for clause in (
+                _missing_value_clause("accession", missing_accession),
+                _missing_value_clause("sample_type", missing_sample_type),
+            ) if clause is not None
+        ]
+        raise CliUsageError(f"Accession sheet {'; '.join(clauses)}: {path}.")
     return AccessionSheet(path=path, rows=rows)
 
 
-def _missing_column_error(column: str, missing: list[int], path: Path) -> CliUsageError:
+def _missing_value_clause(column: str, missing: list[int]) -> str | None:
+    if not missing:
+        return None
     numbers = ", ".join(str(number) for number in missing)
     # Data row 1 is the first row after the header, matching _sheet.py's
     # convention (and upload-batch's documented "1-based row number").
     verb = "has" if len(missing) == 1 else "have"
-    return CliUsageError(f"Accession sheet data row(s) {numbers} {verb} no {column}: {path}.")
+    return f"data row(s) {numbers} {verb} no {column}"
 
 
 def _cell(record: dict[str, str], column: str) -> str | None:
