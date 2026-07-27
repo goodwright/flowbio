@@ -166,6 +166,45 @@ To reject the upload when warnings are present, set
 This raises :class:`~flowbio.v2.exceptions.AnnotationValidationError`
 if the annotation has any warnings.
 
+.. _sample-imports:
+
+Importing samples from public repositories
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use :meth:`~flowbio.v2.samples.SampleResource.import_samples` to create
+samples directly from public-repository run or experiment accessions
+(SRR/ERR/DRR or SRX/ERX/DRX), instead of uploading files yourself. Every
+accession submitted together is tracked as a single job::
+
+    from flowbio.v2.samples import SampleImportSpec
+
+    job = client.samples.import_samples([
+        SampleImportSpec(accession="ERR1160845", sample_type="RNA-Seq"),
+        SampleImportSpec(
+            accession="ERR10677146",
+            sample_type="RNA-Seq",
+            metadata={"strandedness": "reverse"},
+        ),
+    ])
+
+The job starts out ``"RUNNING"``. Poll it with
+:meth:`~flowbio.v2.samples.SampleResource.get_import` until its status
+leaves ``"RUNNING"``::
+
+    import time
+
+    while job.status == "RUNNING":
+        time.sleep(5)
+        job = client.samples.get_import(job.id)
+
+    if job.status == "COMPLETED":
+        print(f"Imported samples: {job.sample_ids}")
+    else:
+        print(f"Import failed: {job.error}")
+
+``job.accessions`` and ``job.sample_ids`` correspond positionally once the
+job has completed.
+
 API Reference
 -------------
 
@@ -186,3 +225,7 @@ Models
 .. autopydantic_model:: flowbio.v2.samples.Organism
 
 .. autopydantic_model:: flowbio.v2.samples.MultiplexedUpload
+
+.. autoclass:: flowbio.v2.samples.SampleImportSpec
+
+.. autopydantic_model:: flowbio.v2.samples.SampleImportJob

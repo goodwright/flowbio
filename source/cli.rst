@@ -367,6 +367,69 @@ authentication failure; otherwise the standard mapping above.
     $ flowbio samples upload-batch --sheet ./samples.csv --sample-type RNA-Seq --json
     {"uploaded": [{"row_number": 1, "name": "liver_r1", "sample_id": "samp_1"}], "failed": [], "skipped": [], "counts": {"uploaded": 1, "failed": 0, "skipped": 0}}
 
+``samples import``
+~~~~~~~~~~~~~~~~~~~
+
+Import samples from public-repository accessions (SRR/ERR/DRR run or
+SRX/ERX/DRX experiment accessions), applying one sample type to every row —
+no files to upload yourself.
+
+::
+
+    flowbio samples import --sheet PATH --sample-type TYPE
+        [--skip-invalid] [--poll-interval SECONDS] [--timeout SECONDS]
+
+Run ``flowbio samples import --help`` for the full option list. The sheet is
+a CSV with an ``accession`` column plus optional ``name``/``organism`` and
+metadata columns (there is no ``batch-template`` equivalent for it, since it
+has no reads files or project field). ``name`` defaults to the accession when
+omitted. The sample type is sent as-is and validated server-side.
+
+**Validation is up front**, mirroring ``upload-batch``: a missing or
+malformed accession, a duplicate accession within the sheet, a value outside
+a closed-option attribute's allowed values, or missing metadata required for
+the chosen type — every problem is collected before anything is submitted.
+By default any invalid row aborts the whole run (exit ``2``);
+``--skip-invalid`` skips them (reporting why) and imports the rest.
+
+Unlike ``upload-batch``, every valid row is submitted **together as one
+server-side job** — there is no per-row upload loop. The command polls that
+job (every ``--poll-interval`` seconds, default 5, for up to ``--timeout``
+seconds, default 1800) until it leaves ``"RUNNING"``. Once the job completes,
+every submitted row is reported as imported; if it fails or times out, every
+row is reported as failed with the same message, since the job has one
+outcome for the whole batch.
+
+**Output** — human: each row's outcome on stderr, then a final counts summary
+on stdout. ``--json``: a single document on stdout with ``imported``,
+``failed``, and ``skipped`` lists plus a ``counts`` summary:
+
+.. code-block:: json
+
+    {
+      "imported": [{"row_number": 1, "accession": "ERR1160845", "sample_id": 101}],
+      "failed":   [],
+      "skipped":  [{"row_number": 2, "accession": "bogus", "reasons": ["..."]}],
+      "counts":   {"imported": 1, "failed": 0, "skipped": 1}
+    }
+
+**Exit codes** — ``0`` the import job completed; ``2`` a pre-flight
+validation failure (without ``--skip-invalid``) or a non-CSV sheet; ``1`` the
+import job failed or did not finish within ``--timeout``; ``3``
+authentication failure; otherwise the standard mapping above.
+
+**Example**
+
+.. code-block:: bash
+
+    $ flowbio samples import --sheet ./accessions.csv --sample-type RNA-Seq
+    Row 1 (ERR1160845): imported sample 101
+    Row 2 (ERR10677146): imported sample 102
+    Imported 2, failed 0, skipped 0.
+
+    $ flowbio samples import --sheet ./accessions.csv --sample-type RNA-Seq --json
+    {"imported": [{"row_number": 1, "accession": "ERR1160845", "sample_id": 101}], "failed": [], "skipped": [], "counts": {"imported": 1, "failed": 0, "skipped": 0}}
+
 ``api get``
 ~~~~~~~~~~~
 

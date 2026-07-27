@@ -10,10 +10,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from flowbio.cli._accession_sheet import (
+    AccessionSheetRow,
+    duplicate_accession_errors,
+    parse_accession_sheet,
+    validate_accession_row,
+)
 from flowbio.cli._exit_codes import CliUsageError, ExitCode
 from flowbio.cli._files import existing_file
 from flowbio.cli._output import Output, format_issue
@@ -26,7 +34,12 @@ from flowbio.cli._sheet import (
 from flowbio.cli._types import JsonValue
 from flowbio.v2.client import Client
 from flowbio.v2.exceptions import FlowApiError
-from flowbio.v2.samples import MetadataAttribute, SampleTypeId
+from flowbio.v2.samples import (
+    MetadataAttribute,
+    SampleImportJob,
+    SampleImportSpec,
+    SampleTypeId,
+)
 
 
 def register(
@@ -74,6 +87,16 @@ def register(
         description=(
             "Validate every row of a CSV sample sheet up front, then upload the "
             "valid rows sequentially, reporting each row's outcome."
+        ),
+    ))
+    _configure_import(verbs.add_parser(
+        "import",
+        parents=[global_parent],
+        help="Import samples from public-repository accessions.",
+        description=(
+            "Validate every row of a CSV accession sheet up front, kick off a "
+            "single import job for the valid rows, poll it to completion, and "
+            "report each accession's outcome."
         ),
     ))
 
@@ -230,6 +253,47 @@ def _configure_upload_batch(upload_batch: argparse.ArgumentParser) -> None:
         "--stop-on-error",
         action="store_true",
         help="Abort on the first row that fails to upload.",
+    )
+
+
+_DEFAULT_POLL_INTERVAL = 5.0
+_DEFAULT_TIMEOUT = 1800.0
+
+
+def _configure_import(import_parser: argparse.ArgumentParser) -> None:
+    import_parser.set_defaults(command_parser=import_parser, handler=_import_command)
+    import_parser.add_argument(
+        "--sheet",
+        required=True,
+        metavar="PATH",
+        type=Path,
+        help="CSV accession sheet (accession, optional name/organism, plus metadata columns).",
+    )
+    import_parser.add_argument(
+        "--sample-type",
+        required=True,
+        metavar="TYPE",
+        type=SampleTypeId,
+        help="Sample type applied to every accession (sent as-is; validated server-side).",
+    )
+    import_parser.add_argument(
+        "--skip-invalid",
+        action="store_true",
+        help="Skip invalid rows (reporting why) instead of aborting the import.",
+    )
+    import_parser.add_argument(
+        "--poll-interval",
+        type=float,
+        default=_DEFAULT_POLL_INTERVAL,
+        metavar="SECONDS",
+        help=f"Seconds to wait between checks of the import job's status (default: {_DEFAULT_POLL_INTERVAL:g}).",
+    )
+    import_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=_DEFAULT_TIMEOUT,
+        metavar="SECONDS",
+        help=f"Maximum seconds to wait for the import job to finish (default: {_DEFAULT_TIMEOUT:g}).",
     )
 
 
@@ -556,6 +620,172 @@ def _row_reads(row: SheetRow) -> dict[str, Path]:
 
 def _invalid_line(row: SheetRow, reasons: list[str]) -> str:
     return f"Row {row.row_number} ({row.name}): {'; '.join(reasons)}"
+
+
+@dataclass(frozen=True)
+class _ImportResult:
+    """The outcome of an ``import`` run, rendered to text or JSON.
+
+    Unlike :class:`_BatchResult`, every accession shares one server-side job:
+    all rows land in ``imported`` together on a completed job, or all land in
+    ``failed`` together (carrying the job's one error message) otherwise.
+    """
+
+    imported: list[dict[str, JsonValue]]
+    failed: list[dict[str, JsonValue]]
+    skipped: list[dict[str, JsonValue]]
+
+    @property
+    def counts(self) -> dict[str, int]:
+        return {
+            "imported": len(self.imported),
+            "failed": len(self.failed),
+            "skipped": len(self.skipped),
+        }
+
+    @property
+    def document(self) -> dict[str, JsonValue]:
+        return {
+            "imported": self.imported,
+            "failed": self.failed,
+            "skipped": self.skipped,
+            "counts": self.counts,
+        }
+
+    @property
+    def summary(self) -> str:
+        counts = self.counts
+        return (
+            f"Imported {counts['imported']}, failed {counts['failed']}, "
+            f"skipped {counts['skipped']}."
+        )
+
+    @property
+    def exit_code(self) -> ExitCode:
+        return ExitCode.RUNTIME if self.failed else ExitCode.SUCCESS
+
+
+def _import_command(
+    args: argparse.Namespace, client: Client, output: Output,
+) -> ExitCode:
+    """Validate an accession sheet up front, then run one import job for it.
+
+    :param args: Parsed command-line arguments.
+    :param client: The authenticated Flow client.
+    :param output: The result/error renderer.
+    :returns: :attr:`ExitCode.SUCCESS` when the import job completes,
+        :attr:`ExitCode.USAGE` on a pre-flight validation failure without
+        ``--skip-invalid``, or :attr:`ExitCode.RUNTIME` if the import job
+        fails or does not finish within ``--timeout``.
+    """
+    sheet = parse_accession_sheet(args.sheet)
+    attributes = client.samples.get_metadata_attributes()
+    duplicates = duplicate_accession_errors(sheet.rows)
+    classified = [
+        (
+            row,
+            validate_accession_row(row, attributes, args.sample_type)
+            + duplicates.get(row.row_number, []),
+        )
+        for row in sheet.rows
+    ]
+    invalid = [(row, reasons) for row, reasons in classified if reasons]
+    valid = [row for row, reasons in classified if not reasons]
+
+    if invalid and not args.skip_invalid:
+        output.emit_error(
+            "Accession sheet has invalid rows; nothing was imported.",
+            details=[_invalid_accession_line(row, reasons) for row, reasons in invalid],
+        )
+        return ExitCode.USAGE
+
+    for row, reasons in invalid:
+        output.emit_advisory(f"Skipped {_invalid_accession_line(row, reasons)}")
+    skipped = [
+        {"row_number": row.row_number, "accession": row.accession, "reasons": reasons}
+        for row, reasons in invalid
+    ]
+
+    result = _run_import(valid, args, client, output, skipped)
+    output.emit_result(result.summary, result.document)
+    return result.exit_code
+
+
+def _run_import(
+    rows: list[AccessionSheetRow],
+    args: argparse.Namespace,
+    client: Client,
+    output: Output,
+    skipped: list[dict[str, JsonValue]],
+) -> _ImportResult:
+    if not rows:
+        return _ImportResult(imported=[], failed=[], skipped=skipped)
+
+    specs = [
+        SampleImportSpec(
+            accession=row.accession,
+            sample_type=args.sample_type,
+            name=row.name,
+            organism_id=row.organism,
+            metadata=row.metadata or None,
+        )
+        for row in rows
+    ]
+    job = client.samples.import_samples(specs)
+    output.emit_advisory(f"Import job {job.id} started for {len(rows)} accession(s); polling...")
+    job = _poll_job(client, job, args.poll_interval, args.timeout)
+    return _import_result(job, rows, skipped, output)
+
+
+def _poll_job(
+    client: Client, job: SampleImportJob, poll_interval: float, timeout: float,
+) -> SampleImportJob:
+    max_attempts = max(1, math.ceil(timeout / poll_interval))
+    for _ in range(max_attempts):
+        if job.status != "RUNNING":
+            break
+        time.sleep(poll_interval)
+        job = client.samples.get_import(job.id)
+    return job
+
+
+def _import_result(
+    job: SampleImportJob,
+    rows: list[AccessionSheetRow],
+    skipped: list[dict[str, JsonValue]],
+    output: Output,
+) -> _ImportResult:
+    if job.status == "COMPLETED":
+        accession_to_sample_id = dict(zip(job.accessions, job.sample_ids))
+        imported = [
+            {
+                "row_number": row.row_number,
+                "accession": row.accession,
+                "sample_id": accession_to_sample_id.get(row.accession),
+            }
+            for row in rows
+        ]
+        for entry in imported:
+            output.emit_advisory(
+                f"Row {entry['row_number']} ({entry['accession']}): "
+                f"imported sample {entry['sample_id']}",
+            )
+        return _ImportResult(imported=imported, failed=[], skipped=skipped)
+
+    message = job.error or f"import job {job.id} ended with status {job.status}"
+    failed = [
+        {"row_number": row.row_number, "accession": row.accession, "message": message}
+        for row in rows
+    ]
+    for entry in failed:
+        output.emit_advisory(
+            f"Row {entry['row_number']} ({entry['accession']}): import failed — {message}",
+        )
+    return _ImportResult(imported=[], failed=failed, skipped=skipped)
+
+
+def _invalid_accession_line(row: AccessionSheetRow, reasons: list[str]) -> str:
+    return f"Row {row.row_number} ({row.accession or '<blank>'}): {'; '.join(reasons)}"
 
 
 def _merge_metadata(
