@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from http import HTTPStatus
 from pathlib import Path
 from unittest.mock import ANY, patch
@@ -1265,3 +1266,18 @@ class TestGetImport:
         assert result.sample_ids == []
         assert result.execution_id is None
         assert result.error is None
+
+    @respx.mock
+    def test_naive_timestamp_is_treated_as_utc(self) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json={
+                "id": 42,
+                "status": "RUNNING",
+                "started": "2024-04-05T19:34:38",
+            }),
+        )
+
+        client = Client()
+        result = client.samples.get_import(SampleImportJobId(42))
+
+        assert result.started == datetime(2024, 4, 5, 19, 34, 38, tzinfo=timezone.utc)

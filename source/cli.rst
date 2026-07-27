@@ -371,8 +371,8 @@ authentication failure; otherwise the standard mapping above.
 ~~~~~~~~~~~~~~~~~~
 
 Kick off a batch import of samples from public-repository accessions (SRR/
-ERR/DRR run or SRX/ERX/DRX experiment accessions), applying one sample type
-to every row — no files to upload yourself.
+ERR/DRR run or SRX/ERX/DRX experiment accessions), applying a default sample
+type that each row can override — no files to upload yourself.
 
 ::
 
@@ -417,7 +417,10 @@ with no resolvable sample type; ``1`` the API rejected the batch (e.g.
 unknown sample type, missing required metadata, an unsupported accession
 format — these come back as an HTTP ``422``; ``5`` in the unlikely case it
 answers ``400`` instead); ``3`` authentication failure; otherwise the
-standard mapping above.
+standard mapping above. Because whether ``--sample-type`` is required
+depends on the sheet's contents, these sheet-level usage errors (``2``) are
+only detected after authentication succeeds, unlike a malformed flag value
+(which fails before it).
 
 **Example**
 

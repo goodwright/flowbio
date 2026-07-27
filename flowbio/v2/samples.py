@@ -28,11 +28,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NewType
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from flowbio.v2._pagination import PageIterator
 from flowbio.v2.exceptions import (
@@ -214,6 +214,17 @@ class SampleImportJob(BaseModel, frozen=True):
     error: str | None = Field(
         default=None, description='The failure reason, set only when status is "FAILED".',
     )
+
+    @field_validator("created", "started", "finished", mode="after")
+    @classmethod
+    def _assume_utc_if_naive(cls, value: datetime | None) -> datetime | None:
+        # A naive value (no tzinfo) is treated as already UTC, matching what
+        # the server always means by these timestamps, rather than left
+        # ambiguous for every consumer (CLI, --json, library) to decide on
+        # its own.
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class SampleResource:

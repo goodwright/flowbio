@@ -643,17 +643,15 @@ def _import_command(
         ``sample_type`` of its own and no ``--sample-type`` given.
     """
     sheet = parse_accession_sheet(args.sheet)
-    missing_type = [
-        row.row_number for row in sheet.rows
-        if row.sample_type is None and args.sample_type is None
-    ]
-    if missing_type:
-        numbers = ", ".join(str(number) for number in missing_type)
-        verb = "has" if len(missing_type) == 1 else "have"
-        raise CliUsageError(
-            f"Accession sheet data row(s) {numbers} {verb} no sample_type and "
-            f"--sample-type was not given: {args.sheet}.",
-        )
+    if args.sample_type is None:
+        missing_type = [row.row_number for row in sheet.rows if row.sample_type is None]
+        if missing_type:
+            numbers = ", ".join(str(number) for number in missing_type)
+            verb = "has" if len(missing_type) == 1 else "have"
+            raise CliUsageError(
+                f"Accession sheet data row(s) {numbers} {verb} no sample_type and "
+                f"--sample-type was not given: {args.sheet}.",
+            )
     specs: list[SampleImportSpec] = [row.to_spec(args.sample_type) for row in sheet.rows]
     job = client.samples.import_samples(specs)
     output.emit_result(
@@ -702,15 +700,9 @@ def _job_summary(job: SampleImportJob) -> str:
 def _timestamp_suffix(label: str, timestamp: datetime | None) -> str:
     if timestamp is None:
         return ""
-    # A naive value (no tzinfo) is treated as already UTC rather than
-    # converted with astimezone(), which would assume the *local* system
-    # timezone instead.
-    utc_timestamp = (
-        timestamp.astimezone(timezone.utc)
-        if timestamp.tzinfo is not None
-        else timestamp.replace(tzinfo=timezone.utc)
-    )
-    return f" ({label} {utc_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')})"
+    # SampleImportJob normalises a naive value to UTC, so every timestamp
+    # reaching here is already aware.
+    return f" ({label} {timestamp.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')})"
 
 
 def _merge_metadata(
