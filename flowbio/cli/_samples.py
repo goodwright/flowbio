@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -676,7 +676,8 @@ def _import_status_command(
 def _job_summary(job: SampleImportJob) -> str:
     if job.status == "COMPLETED":
         ids = ", ".join(str(sample_id) for sample_id in job.sample_ids) or "none"
-        return f"Job {job.id}: COMPLETED{_timestamp_suffix('finished', job.finished)}. Sample ids: {ids}."
+        suffix = _timestamp_suffix("finished", job.finished)
+        return f"Job {job.id}: COMPLETED{suffix}. Sample ids: {ids}."
     if job.status == "FAILED":
         # The error, if any, is on stderr as an advisory (see
         # _import_status_command) rather than repeated here, so a human
@@ -689,7 +690,15 @@ def _job_summary(job: SampleImportJob) -> str:
 def _timestamp_suffix(label: str, timestamp: datetime | None) -> str:
     if timestamp is None:
         return ""
-    return f" ({label} {timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')})"
+    # A naive value (no tzinfo) is treated as already UTC rather than
+    # converted with astimezone(), which would assume the *local* system
+    # timezone instead.
+    utc_timestamp = (
+        timestamp.astimezone(timezone.utc)
+        if timestamp.tzinfo is not None
+        else timestamp.replace(tzinfo=timezone.utc)
+    )
+    return f" ({label} {utc_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')})"
 
 
 def _merge_metadata(

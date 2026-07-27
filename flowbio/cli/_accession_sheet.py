@@ -43,6 +43,10 @@ class AccessionSheetRow:
     sample_type: SampleTypeId | None
     metadata: dict[str, str]
 
+    def __post_init__(self) -> None:
+        if not self.accession:
+            raise ValueError("accession must not be empty")
+
     def to_spec(self, default_sample_type: SampleTypeId) -> SampleImportSpec:
         """Build the :class:`~flowbio.v2.samples.SampleImportSpec` for this row.
 
@@ -92,39 +96,50 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         metadata_columns = [
             header for header in headers if header not in RESERVED_COLUMNS
         ]
-        rows = [
-            _build_row(record, row_number, metadata_columns)
-            for row_number, record in enumerate(reader, start=1)
-        ]
-    if not rows:
+        records = list(enumerate(reader, start=1))
+    if not records:
         raise CliUsageError(f"Accession sheet has no rows: {path}.")
-    missing = [row.row_number for row in rows if not row.accession]
+    missing = [
+        row_number for row_number, record in records if not _cell(record, "accession")
+    ]
     if missing:
+        numbers = ", ".join(str(number) for number in missing)
+        # Data row 1 is the first row after the header, matching _sheet.py's
+        # convention (and upload-batch's documented "1-based row number").
+        verb = "has" if len(missing) == 1 else "have"
         raise CliUsageError(
-            f"Accession sheet row(s) {', '.join(str(number) for number in missing)} "
-            f"have no accession: {path}.",
+            f"Accession sheet data row(s) {numbers} {verb} no accession: {path}.",
         )
+    # The walrus filter is a no-op here: parse_accession_sheet already raised
+    # above if any record lacked an accession. Filtering on it (rather than
+    # asserting) is what gives the accession its narrowed str type below.
+    rows = [
+        _build_row(record, row_number, metadata_columns, accession)
+        for row_number, record in records
+        if (accession := _cell(record, "accession")) is not None
+    ]
     return AccessionSheet(path=path, rows=rows)
 
 
-def _build_row(
-    record: dict[str, str], row_number: int, metadata_columns: list[str],
-) -> AccessionSheetRow:
-    def cell(column: str) -> str | None:
-        value = (record.get(column) or "").strip()
-        return value or None
+def _cell(record: dict[str, str], column: str) -> str | None:
+    value = (record.get(column) or "").strip()
+    return value or None
 
+
+def _build_row(
+    record: dict[str, str], row_number: int, metadata_columns: list[str], accession: str,
+) -> AccessionSheetRow:
     metadata = {
         column: value
         for column in metadata_columns
-        if (value := cell(column)) is not None
+        if (value := _cell(record, column)) is not None
     }
-    sample_type = cell("sample_type")
+    sample_type = _cell(record, "sample_type")
     return AccessionSheetRow(
         row_number=row_number,
-        accession=cell("accession") or "",
-        name=cell("name"),
-        organism=cell("organism"),
+        accession=accession,
+        name=_cell(record, "name"),
+        organism=_cell(record, "organism"),
         sample_type=SampleTypeId(sample_type) if sample_type is not None else None,
         metadata=metadata,
     )

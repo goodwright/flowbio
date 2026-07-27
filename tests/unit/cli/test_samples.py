@@ -1262,11 +1262,11 @@ class TestSamplesImportStatus:
         assert "started 2023-11-14" in result.stdout
 
     @respx.mock
-    def test_millisecond_scale_timestamp_is_parsed_correctly(self, run_cli) -> None:
+    def test_started_with_non_utc_offset_is_reported_in_utc(self, run_cli) -> None:
         respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
                 "id": 42, "status": "RUNNING", "created": 1700000000,
-                "started": 1700000000000, "finished": None,
+                "started": "2024-04-05T19:34:38+02:00", "finished": None,
                 "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
             }),
         )
@@ -1276,7 +1276,24 @@ class TestSamplesImportStatus:
         )
 
         assert result.exit_code == 0
-        assert "started 2023-11-14" in result.stdout
+        assert "started 2024-04-05 17:34:38 UTC" in result.stdout
+
+    @respx.mock
+    def test_started_with_no_offset_is_treated_as_utc(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json={
+                "id": 42, "status": "RUNNING", "created": 1700000000,
+                "started": "2024-04-05T19:34:38", "finished": None,
+                "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
+            }),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "42",
+        )
+
+        assert result.exit_code == 0
+        assert "started 2024-04-05 19:34:38 UTC" in result.stdout
 
     @respx.mock
     def test_running_job_falls_back_to_created_when_not_started(self, run_cli) -> None:
