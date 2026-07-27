@@ -395,43 +395,49 @@ By default any invalid row aborts the whole run (exit ``2``);
 Unlike ``upload-batch``, every valid row is submitted **together as one
 server-side job** — there is no per-row upload loop. The command polls that
 job (every ``--poll-interval`` seconds, default 5, for up to ``--timeout``
-seconds, default 1800; both must be positive) until it leaves ``"RUNNING"``.
-Once the job completes, every submitted row is reported as imported; if it
-fails or times out, every row is reported as failed with the same message
-(and the sample id, if the job did create one before failing), since the job
-has one outcome for the whole batch. Either way, the job's ``job_id`` is
-included in the output so a timed-out or interrupted run can be resumed with
-``client.samples.get_import(job_id)`` from the library.
+seconds, default 1800; both must be positive, finite numbers) until it leaves
+``"RUNNING"``. Once the job completes, every submitted row is reported as
+imported; if it fails or times out, every row is reported as failed, since
+the job has one outcome for the whole batch. Either way, the job's ``job_id``
+is included in the output so a timed-out or interrupted run can be resumed
+with ``client.samples.get_import(job_id)`` from the library.
 
 Each ``failed`` entry carries a ``status``: ``"failed"`` means the job
-genuinely failed (or completed without creating that row's sample) — safe to
-re-run once fixed. ``"running"`` means ``--timeout`` was reached while the job
-was still in progress: it may yet succeed, so check ``job_status``/
-``get_import(job_id)`` rather than re-submitting, which would risk duplicate
-samples. ``"unknown"`` means the job's ``accessions``/``sample_ids`` couldn't
-be matched to rows at all (an unexpected shape from the server).
+genuinely failed, or completed but didn't create that specific row's sample —
+safe to re-run once fixed. ``"running"`` means ``--timeout`` was reached
+while the job was still in progress: it may yet succeed, so check
+``job_status``/``get_import(job_id)`` rather than re-submitting, which would
+risk duplicate samples. ``"unknown"`` means the job's ``accessions``/
+``sample_ids`` couldn't be matched to rows at all (e.g. a completed job that
+returned no sample ids, or fewer/more than the accessions submitted) — an
+unexpected shape from the server, so treat it like ``"running"`` and don't
+blindly re-run. Whatever sample ids the job did return are always available,
+unattributed, as ``job_sample_ids`` — useful to check a ``"running"``/
+``"unknown"`` outcome didn't already create something.
 
-**Output** — human: each row's outcome on stderr, then a final counts summary
-on stdout. ``--json``: a single document on stdout with ``imported``,
-``failed``, and ``skipped`` lists, a ``counts`` summary, and the job's
-``job_id``/``job_status``/``execution_id`` (``null`` when no job was created,
-e.g. every row was invalid or skipped):
+**Output** — human: each row's outcome on stderr (``import failed`` for a
+genuine failure, ``import did not finish`` for a timeout, ``import outcome
+unknown`` for an unmatchable job), then a final counts summary on stdout.
+``--json``: a single document on stdout with ``imported``, ``failed``, and
+``skipped`` lists, a ``counts`` summary, and the job's ``job_id``/
+``job_status``/``execution_id``/``job_sample_ids`` (``null``/``[]`` when no
+job was created, e.g. every row was invalid or skipped):
 
 .. code-block:: json
 
     {
       "imported": [{"row_number": 1, "accession": "ERR1160845", "sample_id": 101}],
       "failed":   [],
-      "skipped":  [{"row_number": 2, "accession": "bogus", "reasons": ["..."]}],
+      "skipped":  [{"row_number": 2, "accession": "BOGUS", "reasons": ["..."]}],
       "counts":   {"imported": 1, "failed": 0, "skipped": 1},
-      "job_id": 42, "job_status": "COMPLETED", "execution_id": 7
+      "job_id": 42, "job_status": "COMPLETED", "execution_id": 7, "job_sample_ids": [101]
     }
 
 **Exit codes** — ``0`` the import job completed; ``2`` a pre-flight
 validation failure (without ``--skip-invalid``), a non-CSV sheet, or a
-non-positive ``--poll-interval``/``--timeout``; ``1`` the import job failed,
-did not finish within ``--timeout`` (check ``job_status``/each row's
-``status`` before re-running — see above), or returned a shape the rows
+non-positive/non-finite ``--poll-interval``/``--timeout``; ``1`` the import
+job failed, did not finish within ``--timeout`` (check ``job_status``/each
+row's ``status`` before re-running — see above), or returned a shape the rows
 couldn't be matched against; ``3`` authentication failure; otherwise the
 standard mapping above.
 
@@ -445,7 +451,7 @@ standard mapping above.
     Imported 2, failed 0, skipped 0.
 
     $ flowbio samples import --sheet ./accessions.csv --sample-type RNA-Seq --json
-    {"imported": [{"row_number": 1, "accession": "ERR1160845", "sample_id": 101}], "failed": [], "skipped": [], "counts": {"imported": 1, "failed": 0, "skipped": 0}, "job_id": 42, "job_status": "COMPLETED", "execution_id": 7}
+    {"imported": [{"row_number": 1, "accession": "ERR1160845", "sample_id": 101}, {"row_number": 2, "accession": "ERR10677146", "sample_id": 102}], "failed": [], "skipped": [], "counts": {"imported": 2, "failed": 0, "skipped": 0}, "job_id": 42, "job_status": "COMPLETED", "execution_id": 7, "job_sample_ids": [101, 102]}
 
 ``api get``
 ~~~~~~~~~~~

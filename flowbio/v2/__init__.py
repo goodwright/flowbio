@@ -48,6 +48,7 @@ from flowbio.v2.samples import (
     SampleImportJob,
     SampleImportJobId,
     SampleImportSpec,
+    SampleImportStatus,
     SampleType,
     SampleTypeId,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "SampleImportJob",
     "SampleImportJobId",
     "SampleImportSpec",
+    "SampleImportStatus",
     "SampleType",
     "SampleTypeId",
     "TokenCredentials",
