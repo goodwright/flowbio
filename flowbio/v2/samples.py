@@ -27,8 +27,9 @@ Upload with metadata, project, and organism::
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, NewType
+from typing import TYPE_CHECKING, Literal, NewType
 
 from pydantic import BaseModel, Field
 
@@ -137,6 +138,58 @@ class MultiplexedUpload(BaseModel, frozen=True):
     warnings: list[dict] = Field(
         description="Annotation warnings returned by the server. Empty if the annotation was accepted without warnings.",
     )
+
+
+SampleImportJobId = NewType("SampleImportJobId", int)
+"""The identifier of a sample-import job, as returned by
+:meth:`SampleResource.import_samples`."""
+
+
+SampleImportStatus = Literal["RUNNING", "COMPLETED", "FAILED"]
+"""The lifecycle state of a :class:`SampleImportJob`."""
+
+
+@dataclass(frozen=True)
+class SampleImportSpec:
+    """One accession to import, with its per-accession identity and metadata.
+
+    Example::
+
+        specs = [
+            SampleImportSpec(accession="ERR1160845", sample_type="RNA-Seq"),
+            SampleImportSpec(
+                accession="ERR10677146",
+                sample_type="RNA-Seq",
+                organism_id="Hs",
+                metadata={"strandedness": "reverse"},
+            ),
+        ]
+    """
+
+    accession: str
+    sample_type: SampleTypeId
+    name: str | None = None
+    organism_id: str | None = None
+    metadata: dict[str, str] | None = None
+
+
+class SampleImportJob(BaseModel, frozen=True):
+    """A batch job that imports one or more accessions into samples.
+
+    All accessions submitted in one :meth:`SampleResource.import_samples` call
+    share a single job: ``status`` and ``error`` describe the whole batch, and
+    ``accessions``/``sample_ids`` correspond positionally once ``status`` is
+    ``"COMPLETED"``.
+    """
+
+    id: SampleImportJobId = Field(description="Unique identifier for this import job.")
+    status: SampleImportStatus = Field(description="The job's current lifecycle state.")
+    accessions: list[str] = Field(description="The accessions submitted with this job, in submission order.")
+    sample_ids: list[int] = Field(
+        description="The created samples' ids, corresponding to `accessions` once the job has completed.",
+    )
+    execution_id: int | None = Field(description="The pipeline execution backing this job, if one was created.")
+    error: str | None = Field(description='The failure reason, set only when status is "FAILED".')
 
 
 class SampleResource:
@@ -398,6 +451,53 @@ class SampleResource:
             required = [a for a in attributes if a.required]
         """
         return [self._create_metadata_attribute(item) for item in (self._transport.get("/samples/metadata"))]
+
+    def import_samples(self, imports: Sequence[SampleImportSpec]) -> SampleImportJob:
+        """Kick off a batch import of samples from public-repository accessions.
+
+        Every accession is submitted together and tracked as a single job — poll
+        it with :meth:`get_import` until its status leaves ``"RUNNING"``.
+
+        Requires authentication.
+
+        Example::
+
+            job = client.samples.import_samples([
+                SampleImportSpec(accession="ERR1160845", sample_type="RNA-Seq"),
+            ])
+            print(f"Import job: {job.id}")
+
+        :param imports: The accessions to import, one :class:`SampleImportSpec` each.
+        :raises FlowApiError: If any entry is invalid, e.g. an unsupported
+            accession format, unknown sample type, or missing required metadata.
+        """
+        payload = {"imports": [self._import_spec_fields(spec) for spec in imports]}
+        return SampleImportJob(**self._transport.post("/v2/sample-imports", json=payload))
+
+    def get_import(self, job_id: SampleImportJobId) -> SampleImportJob:
+        """Fetch the current state of an import job.
+
+        Example::
+
+            job = client.samples.get_import(job.id)
+            if job.status == "COMPLETED":
+                print(f"Imported samples: {job.sample_ids}")
+
+        :param job_id: The job id returned by :meth:`import_samples`.
+        :raises NotFoundError: If no import job with that id exists.
+        """
+        return SampleImportJob(**self._transport.get(f"/v2/sample-imports/{job_id}"))
+
+    @staticmethod
+    def _import_spec_fields(spec: SampleImportSpec) -> dict:
+        fields: dict = {"accession": spec.accession, "sample_type": spec.sample_type}
+        if spec.name is not None:
+            fields["name"] = spec.name
+        if spec.organism_id is not None:
+            fields["organism"] = spec.organism_id
+        if spec.metadata:
+            fields["metadata"] = spec.metadata
+        return fields
 
     def _create_metadata_attribute(self, item: dict) -> MetadataAttribute:
         item["required_for_sample_types"] = [

@@ -1,3 +1,4 @@
+import json
 from http import HTTPStatus
 from pathlib import Path
 from unittest.mock import ANY, patch
@@ -10,6 +11,7 @@ from flowbio.v2.client import Client, ClientConfig
 from flowbio.v2.exceptions import (
     AnnotationValidationError,
     BadRequestError,
+    FlowApiError,
     NotFoundError,
 )
 from flowbio.v2.samples import (
@@ -17,6 +19,9 @@ from flowbio.v2.samples import (
     MultiplexedUpload,
     Organism,
     Project,
+    SampleImportJob,
+    SampleImportJobId,
+    SampleImportSpec,
     SampleResource,
     SampleType,
     Sample,
@@ -1049,3 +1054,184 @@ class TestUploadMultiplexedData:
 
         assert mux_route.call_count == 3
         assert result.data_ids == ["mux_1"]
+
+class TestImportSamples:
+
+    @respx.mock
+    def test_posts_imports_and_parses_job(self) -> None:
+        route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json={
+                "id": 42,
+                "status": "RUNNING",
+                "created": 1700000000,
+                "started": None,
+                "finished": None,
+                "accessions": ["ERR1160845"],
+                "sample_ids": [],
+                "execution_id": None,
+                "error": None,
+            }),
+        )
+
+        client = Client()
+        result = client.samples.import_samples([
+            SampleImportSpec(accession="ERR1160845", sample_type="rna_seq"),
+        ])
+
+        assert result == SampleImportJob(
+            id=SampleImportJobId(42),
+            status="RUNNING",
+            accessions=["ERR1160845"],
+            sample_ids=[],
+            execution_id=None,
+            error=None,
+        )
+        assert route.call_count == 1
+
+    @respx.mock
+    def test_sends_accession_and_sample_type(self) -> None:
+        route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json={
+                "id": 1, "status": "RUNNING", "accessions": ["ERR1"],
+                "sample_ids": [], "execution_id": None, "error": None,
+            }),
+        )
+
+        client = Client()
+        client.samples.import_samples([
+            SampleImportSpec(accession="ERR1", sample_type="rna_seq"),
+        ])
+
+        payload = json.loads(route.calls[0].request.content)
+        assert payload == {
+            "imports": [{"accession": "ERR1", "sample_type": "rna_seq"}],
+        }
+
+    @respx.mock
+    def test_sends_optional_fields_when_present(self) -> None:
+        route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json={
+                "id": 1, "status": "RUNNING", "accessions": ["ERR1"],
+                "sample_ids": [], "execution_id": None, "error": None,
+            }),
+        )
+
+        client = Client()
+        client.samples.import_samples([
+            SampleImportSpec(
+                accession="ERR1",
+                sample_type="rna_seq",
+                name="my_sample",
+                organism_id="Hs",
+                metadata={"strandedness": "reverse"},
+            ),
+        ])
+
+        payload = json.loads(route.calls[0].request.content)
+        assert payload == {
+            "imports": [{
+                "accession": "ERR1",
+                "sample_type": "rna_seq",
+                "name": "my_sample",
+                "organism": "Hs",
+                "metadata": {"strandedness": "reverse"},
+            }],
+        }
+
+    @respx.mock
+    def test_sends_multiple_imports_in_one_request(self) -> None:
+        route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json={
+                "id": 1, "status": "RUNNING", "accessions": ["ERR1", "ERR2"],
+                "sample_ids": [], "execution_id": None, "error": None,
+            }),
+        )
+
+        client = Client()
+        client.samples.import_samples([
+            SampleImportSpec(accession="ERR1", sample_type="rna_seq"),
+            SampleImportSpec(accession="ERR2", sample_type="rna_seq"),
+        ])
+
+        payload = json.loads(route.calls[0].request.content)
+        assert [entry["accession"] for entry in payload["imports"]] == ["ERR1", "ERR2"]
+        assert route.call_count == 1
+
+    @respx.mock
+    def test_raises_flow_api_error_on_validation_failure(self) -> None:
+        respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
+            return_value=httpx.Response(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                json={"error": "at least one accession is required"},
+            ),
+        )
+
+        client = Client()
+
+        with pytest.raises(FlowApiError) as exc_info:
+            client.samples.import_samples([])
+
+        assert exc_info.value.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+class TestGetImport:
+
+    @respx.mock
+    def test_parses_completed_job(self) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json={
+                "id": 42,
+                "status": "COMPLETED",
+                "created": 1700000000,
+                "started": 1700000001,
+                "finished": 1700000002,
+                "accessions": ["ERR1160845", "ERR10677146"],
+                "sample_ids": [101, 102],
+                "execution_id": 7,
+                "error": None,
+            }),
+        )
+
+        client = Client()
+        result = client.samples.get_import(SampleImportJobId(42))
+
+        assert result == SampleImportJob(
+            id=SampleImportJobId(42),
+            status="COMPLETED",
+            accessions=["ERR1160845", "ERR10677146"],
+            sample_ids=[101, 102],
+            execution_id=7,
+            error=None,
+        )
+
+    @respx.mock
+    def test_parses_failed_job_with_error(self) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json={
+                "id": 42,
+                "status": "FAILED",
+                "accessions": ["ERR1160845"],
+                "sample_ids": [],
+                "execution_id": 7,
+                "error": "download failed: connection reset",
+            }),
+        )
+
+        client = Client()
+        result = client.samples.get_import(SampleImportJobId(42))
+
+        assert result.status == "FAILED"
+        assert result.error == "download failed: connection reset"
+
+    @respx.mock
+    def test_raises_not_found_for_unknown_job(self) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/999").mock(
+            return_value=httpx.Response(
+                HTTPStatus.NOT_FOUND, json={"error": "sample import 999 does not exist"},
+            ),
+        )
+
+        client = Client()
+
+        with pytest.raises(NotFoundError):
+            client.samples.get_import(SampleImportJobId(999))
