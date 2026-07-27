@@ -1245,3 +1245,23 @@ class TestGetImport:
 
         with pytest.raises(NotFoundError):
             client.samples.get_import(SampleImportJobId(999))
+
+    @respx.mock
+    def test_parses_job_missing_timestamps(self) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json={
+                "id": 42,
+                "status": "RUNNING",
+                "accessions": ["ERR1"],
+                "sample_ids": [],
+                "execution_id": None,
+                "error": None,
+            }),
+        )
+
+        client = Client()
+        result = client.samples.get_import(SampleImportJobId(42))
+
+        assert result.created is None
+        assert result.started is None
+        assert result.finished is None
