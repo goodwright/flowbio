@@ -205,8 +205,12 @@ class SampleImportJob(BaseModel, frozen=True):
     sample_ids: list[int] = Field(
         description="The created samples' ids, corresponding to ``accessions`` once the job has completed.",
     )
-    execution_id: int | None = Field(description="The pipeline execution backing this job, if one was created.")
-    error: str | None = Field(description='The failure reason, set only when status is "FAILED".')
+    execution_id: int | None = Field(
+        default=None, description="The pipeline execution backing this job, if one was created.",
+    )
+    error: str | None = Field(
+        default=None, description='The failure reason, set only when status is "FAILED".',
+    )
 
 
 class SampleResource:

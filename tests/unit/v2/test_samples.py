@@ -1265,3 +1265,20 @@ class TestGetImport:
         assert result.created is None
         assert result.started is None
         assert result.finished is None
+
+    @respx.mock
+    def test_parses_job_missing_execution_id_and_error(self) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json={
+                "id": 42,
+                "status": "RUNNING",
+                "accessions": ["ERR1"],
+                "sample_ids": [],
+            }),
+        )
+
+        client = Client()
+        result = client.samples.get_import(SampleImportJobId(42))
+
+        assert result.execution_id is None
+        assert result.error is None

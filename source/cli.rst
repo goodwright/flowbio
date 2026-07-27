@@ -382,14 +382,18 @@ Run ``flowbio samples import --help`` for the full option list. The sheet is
 a CSV with a required ``accession`` column, plus optional ``name``/
 ``organism``/``sample_type`` and metadata columns (there is no
 ``batch-template`` equivalent for it, since it has no reads files or project
-field). ``name`` defaults to the accession when omitted. A row's own
-``sample_type`` column, if present, overrides ``--sample-type`` for that row
-only — useful for a mixed-type sheet. The sample type, accession format, and
-metadata rules are all sent as-is and validated **server-side**; this command
-only checks that the sheet is a readable ``.csv`` and that every row has an
+field; note ``sample_type`` is reserved for the per-row override, so a
+metadata attribute of that exact name can't be sent through the sheet).
+``name`` defaults to the accession when omitted. A row's own ``sample_type``
+column, if present, overrides ``--sample-type`` for that row only — useful
+for a mixed-type sheet. The sample type, accession format, and metadata
+rules are all sent as-is and validated **server-side**; this command only
+checks that the sheet is a readable ``.csv`` and that every row has an
 accession — that column is the one thing every row must have to mean
 anything, so a blank cell rejects the whole sheet up front rather than
-shipping an empty string the server would just reject anyway.
+shipping an empty string the server would just reject anyway. Rows are
+counted from ``1`` for the first data row, after the header (the same
+convention as ``upload-batch``'s ``row_number``).
 
 Every row is submitted **together as one server-side job**. This command
 does **not wait for it to finish** — it reports the job's id and initial
@@ -420,7 +424,7 @@ otherwise the standard mapping above.
     Started import job 42 for 2 accession(s) (status: RUNNING). Check progress with 'flowbio samples import-status --job-id 42'.
 
     $ flowbio samples import --sheet ./accessions.csv --sample-type RNA-Seq --json
-    {"id": 42, "status": "RUNNING", "created": "2024-04-05T19:34:38Z", "started": null, "finished": null, "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [], "execution_id": 7, "error": null}
+    {"id": 42, "status": "RUNNING", "created": "2024-04-05T19:34:38Z", "started": null, "finished": null, "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [], "execution_id": null, "error": null}
 
 ``samples import-status``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
