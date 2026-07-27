@@ -383,11 +383,11 @@ a CSV with an ``accession`` column plus optional ``name``/``organism`` and
 metadata columns (there is no ``batch-template`` equivalent for it, since it
 has no reads files or project field). ``name`` defaults to the accession when
 omitted. The sample type, accession format, duplicates, and metadata rules
-are all sent as-is and validated **server-side** — this command does not
-pre-validate rows itself (beyond checking the sheet has at least one row); an
-invalid sheet surfaces as a normal API error (exit ``1`` — the API returns
-these as an HTTP ``422``, which isn't one of the codes with its own mapping
-below), not a local rejection.
+are all sent as-is and validated **server-side** — this command only checks
+that the sheet is a readable ``.csv`` with at least one row that has an
+accession (rows without one are dropped rather than submitted as an empty
+string); anything else invalid surfaces as a normal API error, not a local
+rejection.
 
 Every row is submitted **together as one server-side job**. This command
 does **not wait for it to finish** — it reports the job's id and initial
@@ -401,9 +401,11 @@ to you, e.g. in a shell loop.
 completes), ``execution_id``, ``error``.
 
 **Exit codes** — ``0`` the job was created (regardless of its eventual
-outcome — check that with ``import-status``); ``2`` a non-CSV or empty sheet;
-``1`` the API rejected the batch (e.g. unknown sample type, missing required
-metadata, an unsupported accession format); ``3`` authentication failure;
+outcome — check that with ``import-status``); ``2`` the sheet isn't a
+readable ``.csv``, or has no row with an accession; ``1`` the API rejected
+the batch (e.g. unknown sample type, missing required metadata, an
+unsupported accession format — these come back as an HTTP ``422``; ``5`` in
+the unlikely case it answers ``400`` instead); ``3`` authentication failure;
 otherwise the standard mapping above.
 
 **Example**
@@ -427,18 +429,21 @@ Fetch and report the current state of a ``samples import`` job.
 
 Read-only — checking a job's status never changes it. There is no built-in
 polling; run this again (or wrap it in your own loop) until ``status`` leaves
-``"RUNNING"``:
+``"RUNNING"``. Check the command's own exit code alongside ``jq`` so a
+transient failure (auth, network) doesn't get read as ``"RUNNING"``:
 
 .. code-block:: bash
 
-    until [ "$(flowbio samples import-status --job-id 42 --json | jq -r .status)" != "RUNNING" ]; do
+    while status=$(flowbio samples import-status --job-id 42 --json | jq -r .status); do
+        [ "$status" = "RUNNING" ] || break
         sleep 30
     done
 
 **Output** — human: a one-line summary including the sample ids on
-``"COMPLETED"`` or the error on ``"FAILED"``. ``--json``: the job as a single
-document — ``id``, ``status``, ``accessions``, ``sample_ids``,
-``execution_id``, ``error``.
+``"COMPLETED"`` or the error on ``"FAILED"``, which is also reported as an
+advisory on stderr in that case. ``--json``: the job as a single document —
+``id``, ``status``, ``accessions``, ``sample_ids``, ``execution_id``,
+``error``.
 
 **Exit codes** — ``0`` the job was fetched and is ``"RUNNING"`` or
 ``"COMPLETED"``; ``1`` the job was fetched but is ``"FAILED"`` (so a caller
