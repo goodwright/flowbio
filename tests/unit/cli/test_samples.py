@@ -1158,6 +1158,7 @@ class TestSamplesImport:
         payload = json.loads(route.calls[0].request.content)
         assert len(payload["imports"]) == 1
         assert payload["imports"][0]["accession"] == "ERR1"
+        assert "Skipped row 2" in result.stderr
 
     @respx.mock
     def test_sheet_with_only_blank_accessions_is_usage_error(
@@ -1244,7 +1245,7 @@ class TestSamplesImportStatus:
 
         assert result.exit_code == 1
         assert "FAILED" in result.stdout
-        assert "download failed" in result.stdout
+        assert "download failed" not in result.stdout
         assert "download failed" in result.stderr
 
     @respx.mock
