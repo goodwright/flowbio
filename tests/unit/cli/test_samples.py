@@ -1169,6 +1169,49 @@ class TestSamplesImport:
         assert sample_types == ["chip_seq", "rna_seq"]
 
     @respx.mock
+    def test_sample_type_flag_is_optional_when_every_row_has_its_own(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        route = respx.post(SAMPLE_IMPORTS_URL).mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
+                1, "RUNNING", ["ERR1", "ERR2"],
+            )),
+        )
+        sheet = _write_import_sheet(
+            tmp_path,
+            {"accession": "ERR1", "sample_type": "chip_seq"},
+            {"accession": "ERR2", "sample_type": "atac_seq"},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import", "--sheet", str(sheet),
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(route.calls[0].request.content)
+        sample_types = [entry["sample_type"] for entry in payload["imports"]]
+        assert sample_types == ["chip_seq", "atac_seq"]
+
+    @respx.mock
+    def test_row_missing_sample_type_without_default_is_usage_error(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        route = respx.post(SAMPLE_IMPORTS_URL)
+        sheet = _write_import_sheet(
+            tmp_path,
+            {"accession": "ERR1", "sample_type": "chip_seq"},
+            {"accession": "ERR2"},
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import", "--sheet", str(sheet),
+        )
+
+        assert result.exit_code == 2
+        assert route.call_count == 0
+        assert "2" in result.stderr
+
+    @respx.mock
     def test_sheet_with_only_blank_accessions_is_usage_error(
         self, run_cli, tmp_path: Path,
     ) -> None:

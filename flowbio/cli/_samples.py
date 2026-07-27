@@ -32,6 +32,7 @@ from flowbio.v2.samples import (
     MetadataAttribute,
     SampleImportJob,
     SampleImportJobId,
+    SampleImportSpec,
     SampleTypeId,
 )
 
@@ -270,12 +271,11 @@ def _configure_import(import_parser: argparse.ArgumentParser) -> None:
     )
     import_parser.add_argument(
         "--sample-type",
-        required=True,
         metavar="TYPE",
         type=SampleTypeId,
         help=(
             "Default sample type (sent as-is; validated server-side), used for any "
-            "row without its own sample_type column."
+            "row without its own sample_type column. Required unless every row has one."
         ),
     )
 
@@ -639,10 +639,22 @@ def _import_command(
     :param output: The result/error renderer.
     :returns: :attr:`ExitCode.SUCCESS` once the job has been kicked off.
     :raises CliUsageError: If the sheet is not a readable ``.csv``, has no
-        rows, or has a row with no accession.
+        rows, has a row with no accession, or has a row with no
+        ``sample_type`` of its own and no ``--sample-type`` given.
     """
     sheet = parse_accession_sheet(args.sheet)
-    specs = [row.to_spec(args.sample_type) for row in sheet.rows]
+    missing_type = [
+        row.row_number for row in sheet.rows
+        if row.sample_type is None and args.sample_type is None
+    ]
+    if missing_type:
+        numbers = ", ".join(str(number) for number in missing_type)
+        verb = "has" if len(missing_type) == 1 else "have"
+        raise CliUsageError(
+            f"Accession sheet data row(s) {numbers} {verb} no sample_type and "
+            f"--sample-type was not given: {args.sheet}.",
+        )
+    specs: list[SampleImportSpec] = [row.to_spec(args.sample_type) for row in sheet.rows]
     job = client.samples.import_samples(specs)
     output.emit_result(
         f"Started import job {job.id} for {len(specs)} accession(s) "
