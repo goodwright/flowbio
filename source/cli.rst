@@ -368,7 +368,7 @@ authentication failure; otherwise the standard mapping above.
     {"uploaded": [{"row_number": 1, "name": "liver_r1", "sample_id": "samp_1"}], "failed": [], "skipped": [], "counts": {"uploaded": 1, "failed": 0, "skipped": 0}}
 
 ``samples import``
-~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
 
 Kick off a batch import of samples from public-repository accessions (SRR/
 ERR/DRR run or SRX/ERX/DRX experiment accessions), applying one sample type
@@ -385,9 +385,9 @@ has no reads files or project field). ``name`` defaults to the accession when
 omitted. The sample type, accession format, duplicates, and metadata rules
 are all sent as-is and validated **server-side** — this command only checks
 that the sheet is a readable ``.csv`` with at least one row that has an
-accession (rows without one are dropped rather than submitted as an empty
-string); anything else invalid surfaces as a normal API error, not a local
-rejection.
+accession; rows without one are dropped (reported by row number on stderr)
+rather than submitted as an empty string. Anything else invalid surfaces as
+a normal API error, not a local rejection.
 
 Every row is submitted **together as one server-side job**. This command
 does **not wait for it to finish** — it reports the job's id and initial
@@ -396,9 +396,9 @@ with ``samples import-status --job-id ID``; polling (if you want it) is up
 to you, e.g. in a shell loop.
 
 **Output** — human: a confirmation line with the job id and a pointer to
-``import-status``. ``--json``: the created job as a single document —
-``id``, ``status``, ``accessions``, ``sample_ids`` (empty until the job
-completes), ``execution_id``, ``error``.
+``import-status``, plus one advisory per skipped row. ``--json``: the created
+job as a single document — ``id``, ``status``, ``accessions``, ``sample_ids``
+(empty until the job completes), ``execution_id``, ``error``.
 
 **Exit codes** — ``0`` the job was created (regardless of its eventual
 outcome — check that with ``import-status``); ``2`` the sheet isn't a
@@ -419,7 +419,7 @@ otherwise the standard mapping above.
     {"id": 42, "status": "RUNNING", "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [], "execution_id": 7, "error": null}
 
 ``samples import-status``
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Fetch and report the current state of a ``samples import`` job.
 
@@ -429,28 +429,37 @@ Fetch and report the current state of a ``samples import`` job.
 
 Read-only — checking a job's status never changes it. There is no built-in
 polling; run this again (or wrap it in your own loop) until ``status`` leaves
-``"RUNNING"``. Check the command's own exit code alongside ``jq`` so a
-transient failure (auth, network) doesn't get read as ``"RUNNING"``:
+``"RUNNING"``. Gate the loop on ``flowbio``'s own exit code (assigning the
+document, not a value piped through ``jq``, in the ``while`` condition) so a
+transient failure (auth, network) breaks the loop instead of being read as
+``"RUNNING"``:
 
 .. code-block:: bash
 
-    while status=$(flowbio samples import-status --job-id 42 --json | jq -r .status); do
-        [ "$status" = "RUNNING" ] || break
+    while out=$(flowbio samples import-status --job-id 42 --json); do
+        [ "$(printf '%s' "$out" | jq -r .status)" = RUNNING ] || break
         sleep 30
     done
+    printf '%s' "$out" | jq -r .status    # COMPLETED / FAILED; empty if the command errored
 
 **Output** — human: a one-line summary including the sample ids on
-``"COMPLETED"`` or the error on ``"FAILED"``, which is also reported as an
-advisory on stderr in that case. ``--json``: the job as a single document —
-``id``, ``status``, ``accessions``, ``sample_ids``, ``execution_id``,
-``error``.
+``"COMPLETED"``, or — on ``"FAILED"`` — a plain ``FAILED.`` summary plus the
+error as a separate advisory on stderr (so it isn't printed twice). ``--json``
+never prints prose to stderr (or anywhere but the one stdout document); the
+failure reason there is the document's ``error`` field. ``--json``: the job
+as a single document — ``id``, ``status``, ``accessions``, ``sample_ids``,
+``execution_id``, ``error``.
 
 **Exit codes** — ``0`` the job was fetched and is ``"RUNNING"`` or
-``"COMPLETED"``; ``1`` the job was fetched but is ``"FAILED"`` (so a caller
-can branch on the exit code alone, without parsing ``--json`` output — the
-loop above still needs ``--json``/``jq`` to tell ``"RUNNING"`` from
-``"COMPLETED"``, since both exit ``0``); ``4`` no job with that id exists;
-``3`` authentication failure; otherwise the standard mapping above.
+``"COMPLETED"``; ``1`` either the job was fetched but is ``"FAILED"``, or the
+request itself failed (e.g. a transient server error) — human mode
+distinguishes them (an ``Error:`` line means the request failed; a
+``Job N: FAILED.`` line means the job did), and under ``--json`` a request
+failure's document is on stderr while a ``FAILED`` job's is on stdout like
+any other successful fetch. The loop above still needs ``--json``/``jq`` to
+tell ``"RUNNING"`` from ``"COMPLETED"``, since both exit ``0``; ``4`` no job
+with that id exists; ``3`` authentication failure; otherwise the standard
+mapping above.
 
 **Example**
 

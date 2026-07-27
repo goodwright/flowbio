@@ -637,12 +637,14 @@ def _import_command(
         tell us about either that we can't see already.
     """
     sheet = parse_accession_sheet(args.sheet)
-    rows = [row for row in sheet.rows if row.accession]
-    if not rows:
+    skipped = [row for row in sheet.rows if row.accession is None]
+    if len(skipped) == len(sheet.rows):
         raise CliUsageError(
             f"Accession sheet has no row with an accession: {args.sheet}. "
             f"Check it has an 'accession' column and at least one filled-in row.",
         )
+    for row in skipped:
+        output.emit_advisory(f"Skipped row {row.row_number}: no accession")
     specs = [
         SampleImportSpec(
             accession=row.accession,
@@ -651,7 +653,8 @@ def _import_command(
             organism_id=row.organism,
             metadata=row.metadata or None,
         )
-        for row in rows
+        for row in sheet.rows
+        if row.accession is not None
     ]
     job = client.samples.import_samples(specs)
     output.emit_result(
@@ -699,8 +702,10 @@ def _job_summary(job: SampleImportJob) -> str:
         ids = ", ".join(str(sample_id) for sample_id in job.sample_ids) or "none"
         return f"Job {job.id}: COMPLETED. Sample ids: {ids}."
     if job.status == "FAILED":
-        detail = f" {job.error}" if job.error else ""
-        return f"Job {job.id}: FAILED.{detail}"
+        # The error, if any, is on stderr as an advisory (see
+        # _import_status_command) rather than repeated here, so a human
+        # running this doesn't see the same sentence twice.
+        return f"Job {job.id}: FAILED."
     return f"Job {job.id}: {job.status}."
 
 

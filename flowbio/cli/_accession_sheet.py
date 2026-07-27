@@ -27,10 +27,15 @@ RESERVED_COLUMNS = ("accession", "name", "organism")
 
 @dataclass(frozen=True)
 class AccessionSheetRow:
-    """One data row of an accession sheet."""
+    """One data row of an accession sheet.
+
+    ``accession`` may be ``None`` (empty cell, or no ``accession`` column at
+    all) — reported by the caller rather than rejected here, so a missing
+    accession is one visible problem instead of an opaque server rejection.
+    """
 
     row_number: int
-    accession: str
+    accession: str | None
     name: str | None
     organism: str | None
     metadata: dict[str, str]
@@ -91,7 +96,7 @@ def _build_row(
     }
     return AccessionSheetRow(
         row_number=row_number,
-        accession=cell("accession") or "",
+        accession=cell("accession"),
         name=cell("name"),
         organism=cell("organism"),
         metadata=metadata,
