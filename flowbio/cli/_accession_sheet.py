@@ -73,9 +73,10 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
 
     :param path: The accession-sheet file. Must be a ``.csv`` — an ``.xlsx`` or
         ``.tsv`` is a usage error directing the user to export to CSV.
-    :returns: The parsed sheet, with empty cells dropped and surrounding
-        whitespace trimmed. Values are otherwise passed through unchanged,
-        including ``accession``, sent to the server as-entered.
+    :returns: The parsed sheet, with wholly-blank rows skipped, empty cells
+        dropped, and surrounding whitespace trimmed (including in header
+        names). Values are otherwise passed through unchanged, including
+        ``accession``, sent to the server as-entered.
     :raises CliUsageError: If the file is not a readable ``.csv``, has no
         rows, or has a row with no accession or no sample_type.
     """
@@ -93,7 +94,11 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
     # parses as "﻿accession" and every row reports a missing accession.
     with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
-        headers = reader.fieldnames or []
+        # A hand-authored header (unlike upload-batch's template-generated
+        # one) routinely has a stray space after a comma; reassigning
+        # fieldnames makes every row dict keyed by the trimmed name too.
+        headers = [header.strip() for header in reader.fieldnames or []]
+        reader.fieldnames = headers
         metadata_columns = [
             header for header in headers if header not in RESERVED_COLUMNS
         ]
@@ -108,8 +113,9 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
                 missing_accession.append(row_number)
             if sample_type is None:
                 missing_sample_type.append(row_number)
-            if accession is not None and sample_type is not None:
-                rows.append(_build_row(record, row_number, metadata_columns, accession, sample_type))
+            if accession is None or sample_type is None:
+                continue
+            rows.append(_build_row(record, row_number, metadata_columns, accession, sample_type))
     if not rows and not missing_accession and not missing_sample_type:
         raise CliUsageError(f"Accession sheet has no rows: {path}.")
     if missing_accession or missing_sample_type:
