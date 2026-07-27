@@ -1191,7 +1191,7 @@ class TestSamplesImport:
         assert result.exit_code == 0
         assert result.stderr == ""
         document = json.loads(result.stdout)
-        assert document["skipped"] == [{"row_number": 2}]
+        assert document["skipped"] == [{"row_number": 2, "reason": "no accession"}]
 
     @respx.mock
     def test_sheet_with_only_blank_accessions_is_usage_error(
@@ -1247,6 +1247,23 @@ class TestSamplesImportStatus:
         assert result.exit_code == 0
         assert "42" in result.stdout
         assert "RUNNING" in result.stdout
+
+    @respx.mock
+    def test_running_job_with_started_reports_when_it_started(self, run_cli) -> None:
+        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json={
+                "id": 42, "status": "RUNNING", "created": 1700000000,
+                "started": 1700000001, "finished": None,
+                "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
+            }),
+        )
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "42",
+        )
+
+        assert result.exit_code == 0
+        assert "started 2023-11-14" in result.stdout
 
     @respx.mock
     def test_reports_completed_job_with_sample_ids(self, run_cli) -> None:

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -659,7 +660,9 @@ def _import_command(
         output.emit_advisory(f"Skipped row {row.row_number}: no accession")
     job = client.samples.import_samples(specs)
     document = _job_document(job)
-    document["skipped"] = [{"row_number": row.row_number} for row in skipped]
+    document["skipped"] = [
+        {"row_number": row.row_number, "reason": "no accession"} for row in skipped
+    ]
     output.emit_result(
         f"Started import job {job.id} for {len(specs)} accession(s) "
         f"(status: {job.status}). Check progress with "
@@ -712,7 +715,13 @@ def _job_summary(job: SampleImportJob) -> str:
         # _import_status_command) rather than repeated here, so a human
         # running this doesn't see the same sentence twice.
         return f"Job {job.id}: FAILED."
+    if job.started is not None:
+        return f"Job {job.id}: {job.status} (started {_format_timestamp(job.started)})."
     return f"Job {job.id}: {job.status}."
+
+
+def _format_timestamp(timestamp: int) -> str:
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 def _merge_metadata(

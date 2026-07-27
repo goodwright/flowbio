@@ -393,15 +393,17 @@ Every row is submitted **together as one server-side job**. This command
 does **not wait for it to finish** — it reports the job's id and initial
 status (almost always ``"RUNNING"``) and returns immediately. Check on it
 with ``samples import-status --job-id ID``; polling (if you want it) is up
-to you, e.g. in a shell loop.
+to you, e.g. in a shell loop. Building the same thing directly against the
+library instead of the CLI? See :ref:`sample-imports`.
 
 **Output** — human: a confirmation line with the job id and a pointer to
 ``import-status``, plus one advisory per skipped row. ``--json``: the created
 job as a single document — ``id``, ``status``, ``created``/``started``/
-``finished`` (Unix timestamps; the latter two ``null`` until the job reaches
-those stages), ``accessions``, ``sample_ids`` (empty until the job
-completes), ``execution_id``, ``error``, and ``skipped`` (the row numbers of
-any accession-less rows, empty if none).
+``finished`` (Unix timestamps, ``null`` if not yet reached — or if the server
+response omits one, which the client tolerates), ``accessions``,
+``sample_ids`` (empty until the job completes), ``execution_id``, ``error``,
+and ``skipped`` (``{"row_number": ..., "reason": "no accession"}`` for each
+dropped row, empty if none).
 
 **Exit codes** — ``0`` the job was created (regardless of its eventual
 outcome — check that with ``import-status``); ``2`` the sheet isn't a
@@ -446,12 +448,13 @@ transient failure (auth, network) breaks the loop instead of being read as
     printf '%s' "$out" | jq -r .status    # COMPLETED / FAILED; empty if the command errored
 
 **Output** — human: a one-line summary including the sample ids on
-``"COMPLETED"``, or — on ``"FAILED"`` — a plain ``FAILED.`` summary plus the
-error as a separate advisory on stderr (so it isn't printed twice). ``--json``:
-the job as a single document — ``id``, ``status``, ``created``/``started``/
-``finished`` (Unix timestamps, useful for judging how long a job has been
-running when you've resumed polling one from elsewhere), ``accessions``,
-``sample_ids``, ``execution_id``, ``error``. ``--json`` never prints prose to
+``"COMPLETED"``, when it started (if known) on ``"RUNNING"``, or — on
+``"FAILED"`` — a plain ``FAILED.`` summary plus the error as a separate
+advisory on stderr (so it isn't printed twice). ``--json``: the job as a
+single document — ``id``, ``status``, ``created``/``started``/``finished``
+(Unix timestamps, useful for judging how long a job has been running when
+you've resumed polling one from elsewhere), ``accessions``, ``sample_ids``,
+``execution_id``, ``error``. ``--json`` never prints prose to
 stderr (or anywhere but that one stdout document); the failure reason on a
 ``"FAILED"`` job is the document's ``error`` field, not a separate message.
 
@@ -474,7 +477,7 @@ mapping above.
     Job 42: COMPLETED. Sample ids: 101, 102.
 
     $ flowbio samples import-status --job-id 42 --json
-    {"id": 42, "status": "COMPLETED", "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [101, 102], "execution_id": 7, "error": null}
+    {"id": 42, "status": "COMPLETED", "created": 1712345678, "started": 1712345680, "finished": 1712345900, "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [101, 102], "execution_id": 7, "error": null}
 
 ``api get``
 ~~~~~~~~~~~
