@@ -164,6 +164,21 @@ class TestParseAccessionSheet:
         assert "data row(s) 1 has no accession" in str(excinfo.value)
         assert "data row(s) 2 has no sample_type" in str(excinfo.value)
 
+    def test_trailing_blank_row_is_skipped(self, tmp_path: Path) -> None:
+        # A comma-only line, e.g. one a spreadsheet export leaves below the
+        # data — not a row with data but no accession, so it isn't an error.
+        sheet = parse_accession_sheet(_write_sheet(
+            tmp_path,
+            _record(accession="ERR1"),
+            {},
+        ))
+
+        assert [row.accession for row in sheet.rows] == ["ERR1"]
+
+    def test_sheet_of_only_blank_rows_is_usage_error(self, tmp_path: Path) -> None:
+        with pytest.raises(CliUsageError, match="no rows"):
+            parse_accession_sheet(_write_sheet(tmp_path, {}, {}))
+
 
 def test_row_rejects_empty_accession_by_construction() -> None:
     with pytest.raises(ValueError, match="accession"):
@@ -214,3 +229,15 @@ class TestAccessionSheetRowToSpec:
             organism_id="Hs",
             metadata={"cell_type": "Neuron"},
         )
+
+    def test_annotation_suffixed_column_is_forwarded_as_a_plain_metadata_key(
+        self, tmp_path: Path,
+    ) -> None:
+        # Unlike upload-batch, there's no special handling of `<id>__annotation`
+        # here — it's just another metadata column, and the server does not
+        # recognise it as one (see cli.rst).
+        row = self._row(tmp_path, source="blood", source__annotation="left lobe")
+
+        spec = row.to_spec()
+
+        assert spec.metadata == {"source": "blood", "source__annotation": "left lobe"}

@@ -14,10 +14,14 @@ every row must have to mean anything at all, so a missing one is rejected
 here rather than silently skipped or shipped as an empty string the server
 would just reject anyway. There is deliberately no other way to supply a
 sample type for ``samples import`` — the sheet is the single source of it.
+A row with every cell blank (e.g. a trailing comma-only line some spreadsheet
+exports append below the data) is skipped rather than treated as a row
+missing values, since there is nothing there to be missing.
 """
 from __future__ import annotations
 
 import csv
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,10 +73,9 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
 
     :param path: The accession-sheet file. Must be a ``.csv`` — an ``.xlsx`` or
         ``.tsv`` is a usage error directing the user to export to CSV.
-    :returns: The parsed sheet, with empty cells dropped (other than
-        ``accession``/``sample_type``, which reject the sheet instead — see
-        below). Values are otherwise passed through unchanged, including
-        ``accession``, sent to the server exactly as entered.
+    :returns: The parsed sheet, with empty cells dropped and surrounding
+        whitespace trimmed. Values are otherwise passed through unchanged,
+        including ``accession``, sent to the server as-entered.
     :raises CliUsageError: If the file is not a readable ``.csv``, has no
         rows, or has a row with no accession or no sample_type.
     """
@@ -82,6 +85,9 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
             f"Export your spreadsheet to CSV first.",
         )
     existing_file(path)
+    rows: list[AccessionSheetRow] = []
+    missing_accession: list[int] = []
+    missing_sample_type: list[int] = []
     # utf-8-sig transparently strips a leading BOM, which spreadsheet tools
     # (notably Excel's "CSV UTF-8" export) prepend — otherwise the first header
     # parses as "﻿accession" and every row reports a missing accession.
@@ -91,21 +97,21 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         metadata_columns = [
             header for header in headers if header not in RESERVED_COLUMNS
         ]
-        records = list(enumerate(reader, start=1))
-    if not records:
+        # Row 1 is the first row after the header, matching _sheet.py's
+        # convention (and upload-batch's documented "1-based row number").
+        for row_number, record in enumerate(reader, start=1):
+            if _is_blank_row(record, headers):
+                continue
+            accession = _cell(record, "accession")
+            sample_type = _cell(record, "sample_type")
+            if accession is None:
+                missing_accession.append(row_number)
+            if sample_type is None:
+                missing_sample_type.append(row_number)
+            if accession is not None and sample_type is not None:
+                rows.append(_build_row(record, row_number, metadata_columns, accession, sample_type))
+    if not rows and not missing_accession and not missing_sample_type:
         raise CliUsageError(f"Accession sheet has no rows: {path}.")
-    rows: list[AccessionSheetRow] = []
-    missing_accession: list[int] = []
-    missing_sample_type: list[int] = []
-    for row_number, record in records:
-        accession = _cell(record, "accession")
-        sample_type = _cell(record, "sample_type")
-        if accession is None:
-            missing_accession.append(row_number)
-        if sample_type is None:
-            missing_sample_type.append(row_number)
-        if accession is not None and sample_type is not None:
-            rows.append(_build_row(record, row_number, metadata_columns, accession, sample_type))
     if missing_accession or missing_sample_type:
         clauses = [
             clause for clause in (
@@ -117,12 +123,14 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
     return AccessionSheet(path=path, rows=rows)
 
 
+def _is_blank_row(record: dict[str, str], headers: Sequence[str]) -> bool:
+    return not any((record.get(header) or "").strip() for header in headers)
+
+
 def _missing_value_clause(column: str, missing: list[int]) -> str | None:
     if not missing:
         return None
     numbers = ", ".join(str(number) for number in missing)
-    # Data row 1 is the first row after the header, matching _sheet.py's
-    # convention (and upload-batch's documented "1-based row number").
     verb = "has" if len(missing) == 1 else "have"
     return f"data row(s) {numbers} {verb} no {column}"
 

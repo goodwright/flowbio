@@ -386,13 +386,20 @@ defaults to the accession when omitted. There is deliberately no
 ``--sample-type`` flag: the sheet's own column is the only way to supply a
 sample type, so a mixed-type sheet needs no special handling and a
 single-type sheet just repeats the same value down the column. The sample
-type, accession format, and metadata rules are all sent as-is and validated
-**server-side**; this command only checks that the sheet is a readable
-``.csv`` and that every row has an accession and a sample type — a blank
-cell in either column rejects the whole sheet up front rather than shipping
-something the server would just reject anyway. Rows are counted from ``1``
-for the first data row, after the header (the same convention as
-``upload-batch``'s ``row_number``).
+type, accession format, and metadata rules are all sent as-is (surrounding
+whitespace trimmed) and validated **server-side**; this command only checks
+that the sheet is a readable ``.csv`` and that every row has an accession
+and a sample type — a blank cell in either column rejects the whole sheet
+up front rather than shipping something the server would just reject
+anyway. A row with every cell blank (e.g. a trailing comma-only line some
+spreadsheet exports leave below the data) is skipped rather than treated as
+a row missing values. Rows are counted from ``1`` for the first data row,
+after the header (the same convention as ``upload-batch``'s ``row_number``).
+
+Unlike ``upload-batch``, a metadata column named ``<identifier>__annotation``
+is **not** given any special handling here — it is forwarded as an ordinary
+metadata key, which the server does not recognise, so it is silently
+ignored rather than attached as an annotation or rejected.
 
 Every row is submitted **together as one server-side job**. This command
 does **not wait for it to finish** — it reports the job's id and initial
