@@ -10,18 +10,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from flowbio.cli._accession_sheet import (
-    AccessionSheetRow,
-    duplicate_accession_errors,
-    parse_accession_sheet,
-    validate_accession_row,
-)
+from flowbio.cli._accession_sheet import parse_accession_sheet
 from flowbio.cli._exit_codes import CliUsageError, ExitCode
 from flowbio.cli._files import existing_file
 from flowbio.cli._output import Output, format_issue
@@ -39,7 +32,6 @@ from flowbio.v2.samples import (
     SampleImportJob,
     SampleImportJobId,
     SampleImportSpec,
-    SampleImportStatus,
     SampleTypeId,
 )
 
@@ -96,10 +88,16 @@ def register(
         parents=[global_parent],
         help="Import samples from public-repository accessions.",
         description=(
-            "Validate every row of a CSV accession sheet up front, kick off a "
-            "single import job for the valid rows, poll it to completion, and "
-            "report each accession's outcome."
+            "Kick off a batch import job from a CSV accession sheet and report "
+            "its id. Does not wait for the job to finish — check its progress "
+            "with 'samples import-status'."
         ),
+    ))
+    _configure_import_status(verbs.add_parser(
+        "import-status",
+        parents=[global_parent],
+        help="Check the status of an import job.",
+        description="Fetch and report the current state of a 'samples import' job.",
     ))
 
 
@@ -258,17 +256,6 @@ def _configure_upload_batch(upload_batch: argparse.ArgumentParser) -> None:
     )
 
 
-_DEFAULT_POLL_INTERVAL = 5.0
-_DEFAULT_TIMEOUT = 1800.0
-
-
-def _positive_float(value: str) -> float:
-    parsed = float(value)
-    if not math.isfinite(parsed) or parsed <= 0:
-        raise argparse.ArgumentTypeError(f"must be a positive, finite number, got {value!r}")
-    return parsed
-
-
 def _configure_import(import_parser: argparse.ArgumentParser) -> None:
     import_parser.set_defaults(command_parser=import_parser, handler=_import_command)
     import_parser.add_argument(
@@ -285,30 +272,20 @@ def _configure_import(import_parser: argparse.ArgumentParser) -> None:
         type=SampleTypeId,
         help="Sample type applied to every accession (sent as-is; validated server-side).",
     )
-    import_parser.add_argument(
-        "--skip-invalid",
-        action="store_true",
-        help="Skip invalid rows (reporting why) instead of aborting the import.",
-    )
-    import_parser.add_argument(
-        "--poll-interval",
-        type=_positive_float,
-        default=_DEFAULT_POLL_INTERVAL,
-        metavar="SECONDS",
-        help=(
-            "Seconds to wait between checks of the import job's status; must be "
-            f"positive (default: {_DEFAULT_POLL_INTERVAL:g})."
-        ),
-    )
-    import_parser.add_argument(
-        "--timeout",
-        type=_positive_float,
-        default=_DEFAULT_TIMEOUT,
-        metavar="SECONDS",
-        help=(
-            "Maximum seconds to wait for the import job to finish; must be "
-            f"positive (default: {_DEFAULT_TIMEOUT:g})."
-        ),
+
+
+def _job_id(value: str) -> SampleImportJobId:
+    return SampleImportJobId(int(value))
+
+
+def _configure_import_status(import_status: argparse.ArgumentParser) -> None:
+    import_status.set_defaults(command_parser=import_status, handler=_import_status_command)
+    import_status.add_argument(
+        "--job-id",
+        required=True,
+        metavar="ID",
+        type=_job_id,
+        help="Import job id, as reported by 'samples import'.",
     )
 
 
@@ -637,124 +614,23 @@ def _invalid_line(row: SheetRow, reasons: list[str]) -> str:
     return f"Row {row.row_number} ({row.name}): {'; '.join(reasons)}"
 
 
-@dataclass(frozen=True)
-class _ImportResult:
-    """The outcome of an ``import`` run, rendered to text or JSON.
-
-    Unlike :class:`_BatchResult`, every accession shares one server-side job:
-    all rows land in ``imported`` together on a completed job, or all land in
-    ``failed`` together (carrying the job's one error message) otherwise. Each
-    ``failed`` entry carries a ``status`` of ``"failed"`` (the job genuinely
-    failed, or completed without creating that row's sample), ``"running"``
-    (the job timed out but may still complete), or ``"unknown"`` (the job's
-    accessions/sample_ids couldn't be matched to rows) — only ``"failed"`` is
-    safe to blindly retry. ``job_sample_ids`` carries whatever sample ids the
-    job did return, verbatim and unattributed to any row, so a ``"running"``
-    or ``"unknown"`` outcome doesn't hide that the job may already have
-    created something. ``job_id``/``job_status``/``execution_id`` are
-    ``None`` only when no job was ever created (every row was invalid or
-    skipped), so a timed-out or interrupted run can still be resumed with
-    :meth:`~flowbio.v2.samples.SampleResource.get_import`.
-    """
-
-    imported: list[dict[str, JsonValue]]
-    failed: list[dict[str, JsonValue]]
-    skipped: list[dict[str, JsonValue]]
-    job_id: SampleImportJobId | None = None
-    job_status: SampleImportStatus | None = None
-    execution_id: int | None = None
-    job_sample_ids: list[int] = field(default_factory=list)
-
-    @property
-    def counts(self) -> dict[str, int]:
-        return {
-            "imported": len(self.imported),
-            "failed": len(self.failed),
-            "skipped": len(self.skipped),
-        }
-
-    @property
-    def document(self) -> dict[str, JsonValue]:
-        return {
-            "imported": self.imported,
-            "failed": self.failed,
-            "skipped": self.skipped,
-            "counts": self.counts,
-            "job_id": self.job_id,
-            "job_status": self.job_status,
-            "execution_id": self.execution_id,
-            "job_sample_ids": self.job_sample_ids,
-        }
-
-    @property
-    def summary(self) -> str:
-        counts = self.counts
-        return (
-            f"Imported {counts['imported']}, failed {counts['failed']}, "
-            f"skipped {counts['skipped']}."
-        )
-
-    @property
-    def exit_code(self) -> ExitCode:
-        return ExitCode.RUNTIME if self.failed else ExitCode.SUCCESS
-
-
 def _import_command(
     args: argparse.Namespace, client: Client, output: Output,
 ) -> ExitCode:
-    """Validate an accession sheet up front, then run one import job for it.
+    """Kick off a batch import job from an accession sheet and report its id.
+
+    Every row is submitted as-is: the accession format, duplicates, sample
+    type, organism, and metadata rules are all validated server-side, so a
+    malformed sheet surfaces as a normal :class:`FlowApiError` rather than a
+    local pre-flight rejection. This command does not wait for the job to
+    finish — poll it yourself with ``samples import-status``.
 
     :param args: Parsed command-line arguments.
     :param client: The authenticated Flow client.
     :param output: The result/error renderer.
-    :returns: :attr:`ExitCode.SUCCESS` when the import job completes,
-        :attr:`ExitCode.USAGE` on a pre-flight validation failure without
-        ``--skip-invalid``, or :attr:`ExitCode.RUNTIME` if the import job
-        fails or does not finish within ``--timeout``.
+    :returns: :attr:`ExitCode.SUCCESS` once the job has been kicked off.
     """
     sheet = parse_accession_sheet(args.sheet)
-    attributes = client.samples.get_metadata_attributes()
-    duplicates = duplicate_accession_errors(sheet.rows)
-    classified = [
-        (
-            row,
-            validate_accession_row(row, attributes, args.sample_type)
-            + duplicates.get(row.row_number, []),
-        )
-        for row in sheet.rows
-    ]
-    invalid = [(row, reasons) for row, reasons in classified if reasons]
-    valid = [row for row, reasons in classified if not reasons]
-
-    if invalid and not args.skip_invalid:
-        output.emit_error(
-            "Accession sheet has invalid rows; nothing was imported.",
-            details=[_invalid_accession_line(row, reasons) for row, reasons in invalid],
-        )
-        return ExitCode.USAGE
-
-    for row, reasons in invalid:
-        output.emit_advisory(f"Skipped {_invalid_accession_line(row, reasons)}")
-    skipped = [
-        {"row_number": row.row_number, "accession": row.accession, "reasons": reasons}
-        for row, reasons in invalid
-    ]
-
-    result = _run_import(valid, args, client, output, skipped)
-    output.emit_result(result.summary, result.document)
-    return result.exit_code
-
-
-def _run_import(
-    rows: list[AccessionSheetRow],
-    args: argparse.Namespace,
-    client: Client,
-    output: Output,
-    skipped: list[dict[str, JsonValue]],
-) -> _ImportResult:
-    if not rows:
-        return _ImportResult(imported=[], failed=[], skipped=skipped)
-
     specs = [
         SampleImportSpec(
             accession=row.accession,
@@ -763,141 +639,56 @@ def _run_import(
             organism_id=row.organism,
             metadata=row.metadata or None,
         )
-        for row in rows
+        for row in sheet.rows
     ]
     job = client.samples.import_samples(specs)
-    output.emit_advisory(f"Import job {job.id} started for {len(rows)} accession(s); polling...")
-    job = _poll_job(client, job, args.poll_interval, args.timeout)
-    return _import_result(job, rows, skipped, output)
-
-
-def _poll_job(
-    client: Client, job: SampleImportJob, poll_interval: float, timeout: float,
-) -> SampleImportJob:
-    deadline = time.monotonic() + timeout
-    while job.status == "RUNNING":
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            break
-        time.sleep(min(poll_interval, remaining))
-        job = client.samples.get_import(job.id)
-    return job
-
-
-def _import_result(
-    job: SampleImportJob,
-    rows: list[AccessionSheetRow],
-    skipped: list[dict[str, JsonValue]],
-    output: Output,
-) -> _ImportResult:
-    if _sample_ids_unmatchable(job):
-        imported: list[dict[str, JsonValue]] = []
-        failed = _mismatched_outcome(job, rows, output)
-    else:
-        accession_to_sample_id = dict(zip(job.accessions, job.sample_ids))
-        if job.status == "COMPLETED":
-            imported, failed = _completed_outcomes(job, rows, accession_to_sample_id, output)
-        else:
-            imported, failed = [], _failed_outcomes(job, rows, accession_to_sample_id, output)
-    return _ImportResult(
-        imported=imported,
-        failed=failed,
-        skipped=skipped,
-        job_id=job.id,
-        job_status=job.status,
-        execution_id=job.execution_id,
-        job_sample_ids=list(job.sample_ids),
+    output.emit_result(
+        f"Started import job {job.id} for {len(job.accessions)} accession(s) "
+        f"(status: {job.status}). Check progress with "
+        f"'flowbio samples import-status --job-id {job.id}'.",
+        _job_document(job),
     )
+    return ExitCode.SUCCESS
 
 
-def _sample_ids_unmatchable(job: SampleImportJob) -> bool:
-    # An empty sample_ids is the normal, expected shape before anything has
-    # been created (RUNNING) or when nothing survived to be created (FAILED).
-    # A COMPLETED job is different: it has told us the batch is done, so
-    # returning zero sample ids for one or more accessions is exactly as
-    # broken an invariant as any other length mismatch, not a quiet success.
-    if not job.sample_ids:
-        return job.status == "COMPLETED"
-    return len(job.sample_ids) != len(job.accessions)
+def _import_status_command(
+    args: argparse.Namespace, client: Client, output: Output,
+) -> ExitCode:
+    """Fetch and report the current state of an import job.
+
+    :param args: Parsed command-line arguments.
+    :param client: The authenticated Flow client.
+    :param output: The result/error renderer.
+    :returns: :attr:`ExitCode.SUCCESS` once the job's state has been fetched
+        (the job's own ``status`` — not this command's exit code — reflects
+        whether the import itself succeeded).
+    """
+    job = client.samples.get_import(args.job_id)
+    output.emit_result(_job_summary(job), _job_document(job))
+    return ExitCode.SUCCESS
 
 
-def _mismatched_outcome(
-    job: SampleImportJob, rows: list[AccessionSheetRow], output: Output,
-) -> list[dict[str, JsonValue]]:
-    message = (
-        f"import job {job.id} returned {len(job.sample_ids)} sample id(s) for "
-        f"{len(job.accessions)} accession(s); cannot match them to rows"
-    )
-    failed: list[dict[str, JsonValue]] = []
-    for row in rows:
-        failed.append({
-            "row_number": row.row_number,
-            "accession": row.accession,
-            "message": message,
-            "status": "unknown",
-        })
-        output.emit_advisory(f"Row {row.row_number} ({row.accession}): import outcome unknown — {message}")
-    return failed
+def _job_document(job: SampleImportJob) -> dict[str, JsonValue]:
+    return {
+        "id": job.id,
+        "status": job.status,
+        "accessions": job.accessions,
+        "sample_ids": job.sample_ids,
+        "execution_id": job.execution_id,
+        "error": job.error,
+    }
 
 
-def _completed_outcomes(
-    job: SampleImportJob,
-    rows: list[AccessionSheetRow],
-    accession_to_sample_id: dict[str, int],
-    output: Output,
-) -> tuple[list[dict[str, JsonValue]], list[dict[str, JsonValue]]]:
-    imported: list[dict[str, JsonValue]] = []
-    failed: list[dict[str, JsonValue]] = []
-    for row in rows:
-        sample_id = accession_to_sample_id.get(row.accession)
-        if sample_id is None:
-            message = f"import job {job.id} completed but returned no sample id for this accession"
-            failed.append({
-                "row_number": row.row_number, "accession": row.accession,
-                "message": message, "status": "failed",
-            })
-            output.emit_advisory(f"Row {row.row_number} ({row.accession}): import failed — {message}")
-            continue
-        imported.append({"row_number": row.row_number, "accession": row.accession, "sample_id": sample_id})
-        output.emit_advisory(f"Row {row.row_number} ({row.accession}): imported sample {sample_id}")
-    return imported, failed
+def _job_summary(job: SampleImportJob) -> str:
+    if job.status == "COMPLETED":
+        ids = ", ".join(str(sample_id) for sample_id in job.sample_ids)
+        return f"Job {job.id}: COMPLETED. Sample ids: {ids}."
+    if job.status == "FAILED":
+        detail = f" {job.error}" if job.error else ""
+        return f"Job {job.id}: FAILED.{detail}"
+    return f"Job {job.id}: {job.status}."
 
 
-def _failed_outcomes(
-    job: SampleImportJob,
-    rows: list[AccessionSheetRow],
-    accession_to_sample_id: dict[str, int],
-    output: Output,
-) -> list[dict[str, JsonValue]]:
-    timed_out = job.status == "RUNNING"
-    if timed_out:
-        message = (
-            f"import job {job.id} did not finish within the configured timeout "
-            f"(still RUNNING) — check it later with client.samples.get_import({job.id})"
-        )
-        verb = "did not finish"
-    else:
-        message = job.error or f"import job {job.id} ended with status {job.status}"
-        verb = "failed"
-    entry_status = "running" if timed_out else "failed"
-    failed: list[dict[str, JsonValue]] = []
-    for row in rows:
-        entry: dict[str, JsonValue] = {
-            "row_number": row.row_number, "accession": row.accession,
-            "message": message, "status": entry_status,
-        }
-        sample_id = accession_to_sample_id.get(row.accession)
-        advisory = f"Row {row.row_number} ({row.accession}): import {verb} — {message}"
-        if sample_id is not None:
-            entry["sample_id"] = sample_id
-            advisory += f" (sample {sample_id} was created)"
-        failed.append(entry)
-        output.emit_advisory(advisory)
-    return failed
-
-
-def _invalid_accession_line(row: AccessionSheetRow, reasons: list[str]) -> str:
-    return f"Row {row.row_number} ({row.accession or '<blank>'}): {'; '.join(reasons)}"
 
 
 def _merge_metadata(
