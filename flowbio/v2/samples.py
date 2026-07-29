@@ -527,6 +527,13 @@ class SampleResource:
 
     @staticmethod
     def _import_spec_fields(spec: SampleImportSpec) -> dict:
+        """Build the wire payload for one accession.
+
+        Every field is sent under its dataclass name as-is; only ``name``,
+        ``organism`` (renamed from ``organism_id``), and ``metadata`` are
+        omitted when empty. A field added to :class:`SampleImportSpec` is
+        sent even when unset unless it's also added to ``optional`` here.
+        """
         fields = asdict(spec)
         organism = fields.pop("organism_id")
         optional = {"name": fields.pop("name"), "organism": organism, "metadata": fields.pop("metadata")}

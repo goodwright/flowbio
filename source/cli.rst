@@ -398,21 +398,22 @@ rejects up front rather than guessing:
   a trailing comma in the header row (or a copy-pasted column) is rejected
   rather than becoming an empty-named metadata attribute, or one column
   silently overwriting another.
-- A data row must have at least as many cells as the header — a *short*
-  row (e.g. trailing optional columns omitted entirely, rather than left
-  as empty cells) is always rejected, not treated as having blank values.
-  A row with *more* cells than the header is rejected only if the overflow
-  carries a value (e.g. an unquoted comma inside a value shifting a real
-  value into the extra cell); a purely blank overflow (e.g. one stray
-  trailing comma) is dropped silently.
+- A data row with data in it must have as many cells as the header — a
+  *short* row (e.g. trailing optional columns omitted entirely, rather
+  than left as empty cells) is rejected, not treated as having blank
+  values. A row with *more* cells than the header is rejected only if the
+  overflow carries a value (e.g. an unquoted comma inside a value shifting
+  a real value into the extra cell); a purely blank overflow (e.g. one
+  stray trailing comma) is ignored.
 - Every row must have an accession and a sample type; a blank cell in
   either column rejects the whole sheet.
 
-A row with every cell blank (e.g. a trailing comma-only line some
-spreadsheet exports leave below the data) is skipped rather than treated
-as a row missing values. Rows are counted from ``1`` for the first data
-row, after the header (the same convention as ``upload-batch``'s
-``row_number``).
+A row with every cell blank — whatever its width, including one with fewer
+cells than the header (e.g. a trailing comma-only line some spreadsheet
+exports leave below the data, however many commas it happens to have) — is
+skipped rather than treated as a row missing values. Rows are counted from
+``1`` for the first data row, after the header (the same convention as
+``upload-batch``'s ``row_number``).
 
 Unlike ``upload-batch``, a metadata column named ``<identifier>__annotation``
 is **not** given any special handling here — it is forwarded as an ordinary
