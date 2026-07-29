@@ -229,7 +229,7 @@ class TestParseAccessionSheet:
 
         assert "data row(s) 1 has fewer cells than the header" in str(excinfo.value)
         assert "data row(s) 2 has more cells than the header" in str(excinfo.value)
-        assert "Fill in the missing cell(s), or remove the row" in str(excinfo.value)
+        assert "Add the missing trailing comma(s)" in str(excinfo.value)
         assert "quote it; otherwise remove the extra cell(s)" in str(excinfo.value)
 
     def test_non_csv_xlsx_rejected_with_export_message(self, tmp_path: Path) -> None:
@@ -259,6 +259,16 @@ class TestParseAccessionSheet:
         path.write_text("")
 
         with pytest.raises(CliUsageError, match="no rows"):
+            parse_accession_sheet(path)
+
+    def test_blank_first_line_is_usage_error(self, tmp_path: Path) -> None:
+        # A blank line where the header belongs must not be read as a
+        # present, zero-column header — that would make every data row's
+        # cells overflow it instead of reporting the real problem.
+        path = tmp_path / "sheet.csv"
+        path.write_text("\nERR1,rna_seq\n")
+
+        with pytest.raises(CliUsageError, match="no header row"):
             parse_accession_sheet(path)
 
     def test_row_with_blank_accession_is_usage_error(self, tmp_path: Path) -> None:
