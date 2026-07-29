@@ -115,6 +115,22 @@ class TestParseAccessionSheet:
         with pytest.raises(CliUsageError, match=r"column\(s\) 3, 4 are unnamed"):
             parse_accession_sheet(path)
 
+    def test_duplicated_metadata_column_is_usage_error(self, tmp_path: Path) -> None:
+        # Otherwise the earlier column's value is silently discarded, since
+        # csv.DictReader zips duplicate field names last-wins.
+        path = tmp_path / "sheet.csv"
+        path.write_text("accession,sample_type,treatment,treatment\nERR1,rna_seq,drugA,drugB\n")
+
+        with pytest.raises(CliUsageError, match=r"column name\(s\) 'treatment' is duplicated"):
+            parse_accession_sheet(path)
+
+    def test_duplicated_accession_column_is_usage_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "sheet.csv"
+        path.write_text("accession,sample_type,accession\nERR1,rna_seq,ERR2\n")
+
+        with pytest.raises(CliUsageError, match=r"column name\(s\) 'accession' is duplicated"):
+            parse_accession_sheet(path)
+
     def test_non_csv_xlsx_rejected_with_export_message(self, tmp_path: Path) -> None:
         xlsx = tmp_path / "sheet.xlsx"
         xlsx.write_bytes(b"PK")
