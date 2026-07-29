@@ -1317,7 +1317,7 @@ class TestSamplesImport:
 
         assert result.exit_code == 2
         assert route.call_count == 0
-        assert "data row(s) 1 has a different number of cells than the header" in result.stderr
+        assert "data row(s) 1 has more cells than the header" in result.stderr
 
     @respx.mock
     def test_row_with_fewer_cells_than_the_header_is_usage_error(
@@ -1333,7 +1333,7 @@ class TestSamplesImport:
 
         assert result.exit_code == 2
         assert route.call_count == 0
-        assert "data row(s) 1 has a different number of cells than the header" in result.stderr
+        assert "data row(s) 1 has fewer cells than the header" in result.stderr
 
 
 class TestSamplesImportStatus:

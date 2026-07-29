@@ -59,11 +59,9 @@ class TestParseAccessionSheet:
         path.write_text("accession,sample_type,name,organism\nERR1,rna_seq\n")
 
         with pytest.raises(
-            CliUsageError, match=r"data row\(s\) 1 has a different number of cells than the header",
+            CliUsageError, match=r"data row\(s\) 1 has fewer cells than the header",
         ):
             parse_accession_sheet(path)
-
-    def test_name_and_organism_are_parsed_when_present(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(_write_sheet(
             tmp_path,
             _record(name="liver_r1", organism="Hs"),
@@ -159,7 +157,7 @@ class TestParseAccessionSheet:
         path.write_text("accession,sample_type,name\nERR1,rna_seq,liver_r1,note\n")
 
         with pytest.raises(
-            CliUsageError, match=r"data row\(s\) 1 has a different number of cells than the header",
+            CliUsageError, match=r"data row\(s\) 1 has more cells than the header",
         ):
             parse_accession_sheet(path)
 
@@ -172,7 +170,7 @@ class TestParseAccessionSheet:
         path.write_text("accession,sample_type,name\n,,,ERR1\n")
 
         with pytest.raises(
-            CliUsageError, match=r"data row\(s\) 1 has a different number of cells than the header",
+            CliUsageError, match=r"data row\(s\) 1 has more cells than the header",
         ):
             parse_accession_sheet(path)
 
@@ -203,6 +201,36 @@ class TestParseAccessionSheet:
 
         assert sheet.rows[0].accession == "ERR1"
         assert sheet.rows[0].name == "liver_r1"
+
+    def test_wholly_blank_row_shorter_than_the_header_is_still_skipped(
+        self, tmp_path: Path,
+    ) -> None:
+        # A blank trailing line can have fewer commas than the header width
+        # too (some spreadsheet exports trim trailing empty cells) — this
+        # must be treated the same as the exact-width blank-row case above,
+        # not as a short row with data that can't be attributed to a column.
+        path = tmp_path / "sheet.csv"
+        path.write_text("accession,sample_type,name\nERR1,rna_seq,liver_r1\n,\n")
+
+        sheet = parse_accession_sheet(path)
+
+        assert [row.accession for row in sheet.rows] == ["ERR1"]
+
+    def test_sheet_with_both_a_short_and_an_over_wide_row_reports_both(
+        self, tmp_path: Path,
+    ) -> None:
+        path = tmp_path / "sheet.csv"
+        path.write_text(
+            "accession,sample_type,name\nERR1,rna_seq\nERR2,rna_seq,liver_r1,note\n",
+        )
+
+        with pytest.raises(CliUsageError) as excinfo:
+            parse_accession_sheet(path)
+
+        assert "data row(s) 1 has fewer cells than the header" in str(excinfo.value)
+        assert "data row(s) 2 has more cells than the header" in str(excinfo.value)
+        assert "Fill in the missing cell(s), or remove the row" in str(excinfo.value)
+        assert "quote it; otherwise remove the extra cell(s)" in str(excinfo.value)
 
     def test_non_csv_xlsx_rejected_with_export_message(self, tmp_path: Path) -> None:
         xlsx = tmp_path / "sheet.xlsx"

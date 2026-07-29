@@ -88,7 +88,8 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         )
     existing_file(path)
     rows: list[AccessionSheetRow] = []
-    wrong_cell_count: list[int] = []
+    short_rows: list[int] = []
+    overflow_rows: list[int] = []
     missing_accession: list[int] = []
     missing_sample_type: list[int] = []
     # utf-8-sig transparently strips a leading BOM, which spreadsheet tools
@@ -103,20 +104,17 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
             header for header in headers if header not in RESERVED_COLUMNS
         ]
         for row_number, record in enumerate(reader, start=1):
-            # csv.DictReader stores a row with more cells than the header
-            # under the None key, and fills a row with fewer from missing
-            # keys with None of its own — neither can be attributed to a
-            # column, so a row whose cell count doesn't match the header is
-            # rejected rather than guessed at. A short row is rejected
-            # outright (there's no benign "trailing noise" story for one —
-            # unlike a too-wide row, which a spreadsheet export can produce
-            # with an entirely blank overflow).
-            is_short = any(record.get(header) is None for header in headers)
             overflow_has_value = any((cell or "").strip() for cell in record.get(None) or [])
-            if is_short or overflow_has_value:
-                wrong_cell_count.append(row_number)
+            if not overflow_has_value and _is_blank_row(record, headers):
                 continue
-            if _is_blank_row(record, headers):
+            # A short row's missing cells could just as easily be trailing
+            # optional columns as data landing in the wrong place, so —
+            # unlike a too-wide row's blank overflow — it's rejected outright.
+            if any(record.get(header) is None for header in headers):
+                short_rows.append(row_number)
+                continue
+            if overflow_has_value:
+                overflow_rows.append(row_number)
                 continue
             accession = _cell(record, "accession")
             sample_type = _cell(record, "sample_type")
@@ -127,22 +125,31 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
             if accession is None or sample_type is None:
                 continue
             rows.append(_build_row(record, row_number, metadata_columns, accession, sample_type))
-    if not rows and not wrong_cell_count and not missing_accession and not missing_sample_type:
+    sheet_is_empty = (
+        not rows and not short_rows and not overflow_rows
+        and not missing_accession and not missing_sample_type
+    )
+    if sheet_is_empty:
         raise CliUsageError(f"Accession sheet has no rows: {path}.")
-    if wrong_cell_count or missing_accession or missing_sample_type:
+    if short_rows or overflow_rows or missing_accession or missing_sample_type:
         clauses = [
             clause for clause in (
-                _row_reason_clause("a different number of cells than the header", wrong_cell_count),
+                _row_reason_clause("fewer cells than the header", short_rows),
+                _row_reason_clause("more cells than the header", overflow_rows),
                 _row_reason_clause("no accession", missing_accession),
                 _row_reason_clause("no sample_type", missing_sample_type),
             ) if clause is not None
         ]
         message = f"Accession sheet {'; '.join(clauses)}: {path}."
-        if wrong_cell_count:
-            message += (
-                " If a value legitimately contains a comma, quote it; otherwise remove "
-                "the extra cell(s), or fill in the missing one(s)."
+        remedies: list[str] = []
+        if short_rows:
+            remedies.append("fill in the missing cell(s), or remove the row")
+        if overflow_rows:
+            remedies.append(
+                "if a value legitimately contains a comma, quote it; otherwise "
+                "remove the extra cell(s)",
             )
+        message += "".join(f" {remedy[0].upper()}{remedy[1:]}." for remedy in remedies)
         raise CliUsageError(message)
     return AccessionSheet(path=path, rows=rows)
 
@@ -179,7 +186,7 @@ def _duplicate_columns_clause(duplicates: list[str]) -> str:
     return f"column name(s) {names} {verb} duplicated"
 
 
-def _is_blank_row(record: dict[str, str], headers: Sequence[str]) -> bool:
+def _is_blank_row(record: dict[str, str], headers: list[str]) -> bool:
     return not any(_cell(record, header) for header in headers)
 
 
