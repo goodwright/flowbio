@@ -11,11 +11,10 @@ are all checked server-side when the sheet is submitted — duplicating that
 locally would just be a second, driftable copy of the same rules. What *is*
 checked locally is structural: every row must have an accession and a
 sample type to mean anything at all, every header column must have a
-unique, non-empty name, and no row may have more cells than the header —
-any of these is a case the parser can't resolve on the user's behalf, so
-it's rejected rather than guessed at. A row with *fewer* cells than the
-header (e.g. trailing optional columns omitted) has its missing cells
-treated as blank, same as an empty cell. See :func:`parse_accession_sheet`.
+unique, non-empty name, and every row must have no fewer cells than the
+header, and no more unless the extra ones are blank — any of these is a
+case the parser can't resolve on the user's behalf, so it's rejected
+rather than guessed at. See :func:`parse_accession_sheet`.
 """
 from __future__ import annotations
 
@@ -77,8 +76,9 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         names). Values are otherwise passed through unchanged, including
         ``accession``, sent to the server as-entered.
     :raises CliUsageError: If the file is not a readable ``.csv``, has an
-        unnamed or duplicated column, has no rows, has a row with more
-        cells than the header, or has a row with no accession or no
+        unnamed or duplicated column, has no rows, has a row with fewer
+        cells than the header or with more cells than the header where the
+        overflow isn't blank, or has a row with no accession or no
         sample_type.
     """
     if path.suffix.lower() != ".csv":
@@ -88,7 +88,7 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         )
     existing_file(path)
     rows: list[AccessionSheetRow] = []
-    extra_cells: list[int] = []
+    wrong_cell_count: list[int] = []
     missing_accession: list[int] = []
     missing_sample_type: list[int] = []
     # utf-8-sig transparently strips a leading BOM, which spreadsheet tools
@@ -104,12 +104,17 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         ]
         for row_number, record in enumerate(reader, start=1):
             # csv.DictReader stores a row with more cells than the header
-            # under the None key; that overflow can't be attributed to any
-            # column, so a row whose overflow actually carries a value is
-            # rejected rather than silently dropped.
+            # under the None key, and fills a row with fewer from missing
+            # keys with None of its own — neither can be attributed to a
+            # column, so a row whose cell count doesn't match the header is
+            # rejected rather than guessed at. A short row is rejected
+            # outright (there's no benign "trailing noise" story for one —
+            # unlike a too-wide row, which a spreadsheet export can produce
+            # with an entirely blank overflow).
+            is_short = any(record.get(header) is None for header in headers)
             overflow_has_value = any((cell or "").strip() for cell in record.get(None) or [])
-            if overflow_has_value:
-                extra_cells.append(row_number)
+            if is_short or overflow_has_value:
+                wrong_cell_count.append(row_number)
                 continue
             if _is_blank_row(record, headers):
                 continue
@@ -122,17 +127,23 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
             if accession is None or sample_type is None:
                 continue
             rows.append(_build_row(record, row_number, metadata_columns, accession, sample_type))
-    if not rows and not extra_cells and not missing_accession and not missing_sample_type:
+    if not rows and not wrong_cell_count and not missing_accession and not missing_sample_type:
         raise CliUsageError(f"Accession sheet has no rows: {path}.")
-    if extra_cells or missing_accession or missing_sample_type:
+    if wrong_cell_count or missing_accession or missing_sample_type:
         clauses = [
             clause for clause in (
-                _row_count_clause("more cells than the header", extra_cells),
-                _row_count_clause("no accession", missing_accession),
-                _row_count_clause("no sample_type", missing_sample_type),
+                _row_reason_clause("a different number of cells than the header", wrong_cell_count),
+                _row_reason_clause("no accession", missing_accession),
+                _row_reason_clause("no sample_type", missing_sample_type),
             ) if clause is not None
         ]
-        raise CliUsageError(f"Accession sheet {'; '.join(clauses)}: {path}.")
+        message = f"Accession sheet {'; '.join(clauses)}: {path}."
+        if wrong_cell_count:
+            message += (
+                " If a value legitimately contains a comma, quote it; otherwise remove "
+                "the extra cell(s), or fill in the missing one(s)."
+            )
+        raise CliUsageError(message)
     return AccessionSheet(path=path, rows=rows)
 
 
@@ -172,7 +183,7 @@ def _is_blank_row(record: dict[str, str], headers: Sequence[str]) -> bool:
     return not any(_cell(record, header) for header in headers)
 
 
-def _row_count_clause(reason: str, rows: list[int]) -> str | None:
+def _row_reason_clause(reason: str, rows: list[int]) -> str | None:
     if not rows:
         return None
     numbers = ", ".join(str(number) for number in rows)

@@ -52,16 +52,16 @@ class TestParseAccessionSheet:
         assert sheet.rows[0].name is None
         assert sheet.rows[0].organism is None
 
-    def test_row_shorter_than_the_header_has_missing_trailing_cells_treated_as_blank(
+    def test_row_shorter_than_the_header_is_usage_error(
         self, tmp_path: Path,
     ) -> None:
         path = tmp_path / "sheet.csv"
         path.write_text("accession,sample_type,name,organism\nERR1,rna_seq\n")
 
-        sheet = parse_accession_sheet(path)
-
-        assert sheet.rows[0].name is None
-        assert sheet.rows[0].organism is None
+        with pytest.raises(
+            CliUsageError, match=r"data row\(s\) 1 has a different number of cells than the header",
+        ):
+            parse_accession_sheet(path)
 
     def test_name_and_organism_are_parsed_when_present(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(_write_sheet(
@@ -158,7 +158,9 @@ class TestParseAccessionSheet:
         path = tmp_path / "sheet.csv"
         path.write_text("accession,sample_type,name\nERR1,rna_seq,liver_r1,note\n")
 
-        with pytest.raises(CliUsageError, match=r"data row\(s\) 1 has more cells than the header"):
+        with pytest.raises(
+            CliUsageError, match=r"data row\(s\) 1 has a different number of cells than the header",
+        ):
             parse_accession_sheet(path)
 
     def test_shifted_right_row_with_a_real_value_is_usage_error_not_skipped(
@@ -169,7 +171,9 @@ class TestParseAccessionSheet:
         path = tmp_path / "sheet.csv"
         path.write_text("accession,sample_type,name\n,,,ERR1\n")
 
-        with pytest.raises(CliUsageError, match=r"data row\(s\) 1 has more cells than the header"):
+        with pytest.raises(
+            CliUsageError, match=r"data row\(s\) 1 has a different number of cells than the header",
+        ):
             parse_accession_sheet(path)
 
     def test_wholly_blank_row_with_extra_trailing_comma_is_still_skipped(
@@ -184,6 +188,21 @@ class TestParseAccessionSheet:
         sheet = parse_accession_sheet(path)
 
         assert [row.accession for row in sheet.rows] == ["ERR1"]
+
+    def test_row_with_a_blank_overflow_cell_is_still_accepted(
+        self, tmp_path: Path,
+    ) -> None:
+        # One cell wider than the header, but the overflow is blank and
+        # every named cell has its normal value — this is harmless trailing
+        # noise, not the shifted-right case above, where the row's *data*
+        # spilled into the overflow instead.
+        path = tmp_path / "sheet.csv"
+        path.write_text("accession,sample_type,name\nERR1,rna_seq,liver_r1,\n")
+
+        sheet = parse_accession_sheet(path)
+
+        assert sheet.rows[0].accession == "ERR1"
+        assert sheet.rows[0].name == "liver_r1"
 
     def test_non_csv_xlsx_rejected_with_export_message(self, tmp_path: Path) -> None:
         xlsx = tmp_path / "sheet.xlsx"
