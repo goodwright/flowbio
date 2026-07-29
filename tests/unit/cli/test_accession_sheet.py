@@ -202,6 +202,18 @@ class TestParseAccessionSheet:
         assert sheet.rows[0].accession == "ERR1"
         assert sheet.rows[0].name == "liver_r1"
 
+    def test_quoted_value_containing_a_comma_is_not_treated_as_overflow(
+        self, tmp_path: Path,
+    ) -> None:
+        # The over-wide-row error's remedy tells the user to quote a value
+        # that legitimately contains a comma — confirm that actually works.
+        path = tmp_path / "sheet.csv"
+        path.write_text('accession,sample_type,name\nERR1,rna_seq,"liver, left lobe"\n')
+
+        sheet = parse_accession_sheet(path)
+
+        assert sheet.rows[0].name == "liver, left lobe"
+
     def test_wholly_blank_row_shorter_than_the_header_is_still_skipped(
         self, tmp_path: Path,
     ) -> None:
@@ -350,6 +362,18 @@ class TestParseAccessionSheet:
                 {},
                 _record(accession=""),
             ))
+
+    def test_a_line_with_no_commas_at_all_does_not_consume_a_row_number(
+        self, tmp_path: Path,
+    ) -> None:
+        # Unlike a comma-only blank row (above), a line with nothing on it
+        # at all isn't yielded as a row by csv.DictReader in the first
+        # place, so it doesn't take a row number — documented in cli.rst.
+        path = tmp_path / "sheet.csv"
+        path.write_text("accession,sample_type\nERR1,rna_seq\n\n,rna_seq\n")
+
+        with pytest.raises(CliUsageError, match=r"data row\(s\) 2 has no accession"):
+            parse_accession_sheet(path)
 
 
 def test_row_rejects_empty_accession_by_construction() -> None:

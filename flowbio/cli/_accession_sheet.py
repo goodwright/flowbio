@@ -29,10 +29,10 @@ from flowbio.v2.samples import SampleImportSpec, SampleTypeId
 
 RESERVED_COLUMNS = ("accession", "name", "organism", "sample_type")
 
-# csv.DictReader's row shape: a header's cell, or None if the row was too
-# short to reach it; a list[str] of any cells beyond the header, under the
-# key None, for a row that was too long.
 ParsedRow = Mapping[str | None, str | list[str] | None]
+"""One row as ``csv.DictReader`` yields it: a header's cell, or ``None`` if
+the row was too short to reach it; the extra cells of a too-long row, as a
+``list[str]``, under the key ``None``."""
 
 
 @dataclass(frozen=True)
@@ -102,10 +102,8 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
     # parses as "﻿accession" and every row reports a missing accession.
     with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
-        # A present-but-empty fieldnames list means the first line was
-        # blank, not absent (an empty file gives fieldnames=None instead,
-        # caught by the "no rows" check below); left unchecked, every data
-        # row would overflow a zero-column header instead.
+        # A blank first line parses as fieldnames == [] — distinct from an
+        # absent one, which is fieldnames is None.
         if reader.fieldnames == []:
             raise CliUsageError(f"Accession sheet has no header row: {path}.")
         headers = [header.strip() for header in reader.fieldnames or []]
