@@ -8,18 +8,12 @@ to upload (no ``reads1``/``reads2``) and the import API has no project field.
 
 Domain rules (accession format, duplicates, sample type, organism, metadata)
 are all checked server-side when the sheet is submitted — duplicating that
-locally would just be a second, driftable copy of the same rules.
-``accession`` and ``sample_type`` are different: they are the two columns
-every row must have to mean anything at all, so a missing one is rejected
-here rather than silently skipped or shipped as an empty string the server
-would just reject anyway. There is deliberately no other way to supply a
-sample type for ``samples import`` — the sheet is the single source of it.
-A row with every cell blank (e.g. a trailing comma-only line some spreadsheet
-exports append below the data) is skipped rather than treated as a row
-missing values, since there is nothing there to be missing. An unnamed or
-duplicated header column is rejected outright rather than guessed at — a
-column that could mean more than one thing, or nothing at all, isn't
-something the parser can resolve on the user's behalf.
+locally would just be a second, driftable copy of the same rules. What *is*
+checked locally is structural: every row must have an accession and a
+sample type to mean anything at all, every header column must have a
+unique, non-empty name, and every row must have exactly as many cells as
+the header — any of these is a case the parser can't resolve on the user's
+behalf, so it's rejected rather than guessed at. See :func:`parse_accession_sheet`.
 """
 from __future__ import annotations
 
@@ -81,8 +75,9 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         names). Values are otherwise passed through unchanged, including
         ``accession``, sent to the server as-entered.
     :raises CliUsageError: If the file is not a readable ``.csv``, has an
-        unnamed or duplicated column, has no rows, or has a row with no
-        accession or no sample_type.
+        unnamed or duplicated column, has no rows, has a row with more
+        cells than the header, or has a row with no accession or no
+        sample_type.
     """
     if path.suffix.lower() != ".csv":
         raise CliUsageError(
@@ -91,6 +86,7 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         )
     existing_file(path)
     rows: list[AccessionSheetRow] = []
+    extra_cells: list[int] = []
     missing_accession: list[int] = []
     missing_sample_type: list[int] = []
     # utf-8-sig transparently strips a leading BOM, which spreadsheet tools
@@ -105,6 +101,14 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
             header for header in headers if header not in RESERVED_COLUMNS
         ]
         for row_number, record in enumerate(reader, start=1):
+            # csv.DictReader stores a row with more cells than the header
+            # under the None key; that overflow can't be attributed to any
+            # column, so it's rejected rather than silently dropped (or, if
+            # every named cell happens to be blank, the whole row silently
+            # skipped as though it carried nothing).
+            if record.get(None):
+                extra_cells.append(row_number)
+                continue
             if _is_blank_row(record, headers):
                 continue
             accession = _cell(record, "accession")
@@ -116,13 +120,14 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
             if accession is None or sample_type is None:
                 continue
             rows.append(_build_row(record, row_number, metadata_columns, accession, sample_type))
-    if not rows and not missing_accession and not missing_sample_type:
+    if not rows and not extra_cells and not missing_accession and not missing_sample_type:
         raise CliUsageError(f"Accession sheet has no rows: {path}.")
-    if missing_accession or missing_sample_type:
+    if extra_cells or missing_accession or missing_sample_type:
         clauses = [
             clause for clause in (
-                _missing_value_clause("accession", missing_accession),
-                _missing_value_clause("sample_type", missing_sample_type),
+                _row_count_clause("more cells than the header", extra_cells),
+                _row_count_clause("no accession", missing_accession),
+                _row_count_clause("no sample_type", missing_sample_type),
             ) if clause is not None
         ]
         raise CliUsageError(f"Accession sheet {'; '.join(clauses)}: {path}.")
@@ -131,33 +136,48 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
 
 def _check_headers(headers: Sequence[str], path: Path) -> None:
     unnamed = [position for position, header in enumerate(headers, start=1) if not header]
-    if unnamed:
-        positions = ", ".join(str(position) for position in unnamed)
-        verb = "is" if len(unnamed) == 1 else "are"
-        raise CliUsageError(
-            f"Accession sheet column(s) {positions} {verb} unnamed: {path}. "
-            f"Remove the trailing comma(s) from the header row, or give the column a name.",
-        )
-    duplicates = sorted({header for header in headers if headers.count(header) > 1})
-    if duplicates:
-        names = ", ".join(f"'{name}'" for name in duplicates)
-        verb = "is" if len(duplicates) == 1 else "are"
-        raise CliUsageError(
-            f"Accession sheet column name(s) {names} {verb} duplicated: {path}. "
-            f"Rename the repeated column(s) so each column is unique.",
-        )
+    duplicates = sorted({header for header in headers if header and headers.count(header) > 1})
+    if not unnamed and not duplicates:
+        return
+    clauses = [
+        clause for clause in (
+            _unnamed_columns_clause(unnamed),
+            _duplicate_columns_clause(duplicates),
+        ) if clause is not None
+    ]
+    raise CliUsageError(
+        f"Accession sheet {'; '.join(clauses)}: {path}. Remove the trailing comma(s) "
+        f"from the header row, give unnamed columns a name, and rename any repeated "
+        f"column so each column is unique.",
+    )
+
+
+def _unnamed_columns_clause(unnamed: list[int]) -> str | None:
+    if not unnamed:
+        return None
+    positions = ", ".join(str(position) for position in unnamed)
+    verb = "is" if len(unnamed) == 1 else "are"
+    return f"column(s) {positions} {verb} unnamed"
+
+
+def _duplicate_columns_clause(duplicates: list[str]) -> str | None:
+    if not duplicates:
+        return None
+    names = ", ".join(f"'{name}'" for name in duplicates)
+    verb = "is" if len(duplicates) == 1 else "are"
+    return f"column name(s) {names} {verb} duplicated"
 
 
 def _is_blank_row(record: dict[str, str], headers: Sequence[str]) -> bool:
     return not any(_cell(record, header) for header in headers)
 
 
-def _missing_value_clause(column: str, missing: list[int]) -> str | None:
-    if not missing:
+def _row_count_clause(reason: str, rows: list[int]) -> str | None:
+    if not rows:
         return None
-    numbers = ", ".join(str(number) for number in missing)
-    verb = "has" if len(missing) == 1 else "have"
-    return f"data row(s) {numbers} {verb} no {column}"
+    numbers = ", ".join(str(number) for number in rows)
+    verb = "has" if len(rows) == 1 else "have"
+    return f"data row(s) {numbers} {verb} {reason}"
 
 
 def _cell(record: dict[str, str], column: str) -> str | None:
