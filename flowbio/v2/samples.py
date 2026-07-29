@@ -27,7 +27,7 @@ Upload with metadata, project, and organism::
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NewType
@@ -527,14 +527,9 @@ class SampleResource:
 
     @staticmethod
     def _import_spec_fields(spec: SampleImportSpec) -> dict:
-        fields: dict = {"accession": spec.accession, "sample_type": spec.sample_type}
-        if spec.name is not None:
-            fields["name"] = spec.name
-        if spec.organism_id is not None:
-            fields["organism"] = spec.organism_id
-        if spec.metadata:
-            fields["metadata"] = spec.metadata
-        return fields
+        fields = asdict(spec)
+        fields["organism"] = fields.pop("organism_id")
+        return {key: value for key, value in fields.items() if value}
 
     def _create_metadata_attribute(self, item: dict) -> MetadataAttribute:
         item["required_for_sample_types"] = [
