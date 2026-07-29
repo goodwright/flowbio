@@ -99,6 +99,22 @@ class TestParseAccessionSheet:
         assert sheet.rows[0].name == "liver_r1"
         assert sheet.rows[0].metadata == {}
 
+    def test_trailing_empty_header_column_is_usage_error(self, tmp_path: Path) -> None:
+        # A trailing comma in the header row (e.g. from a spreadsheet export)
+        # must not become a metadata attribute with an empty name.
+        path = tmp_path / "sheet.csv"
+        path.write_text("accession,sample_type,name,\nERR1,rna_seq,liver_r1,note\n")
+
+        with pytest.raises(CliUsageError, match=r"column\(s\) 4 is unnamed"):
+            parse_accession_sheet(path)
+
+    def test_multiple_unnamed_columns_are_all_named_in_the_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "sheet.csv"
+        path.write_text("accession,sample_type,,\nERR1,rna_seq,,\n")
+
+        with pytest.raises(CliUsageError, match=r"column\(s\) 3, 4 are unnamed"):
+            parse_accession_sheet(path)
+
     def test_non_csv_xlsx_rejected_with_export_message(self, tmp_path: Path) -> None:
         xlsx = tmp_path / "sheet.xlsx"
         xlsx.write_bytes(b"PK")
