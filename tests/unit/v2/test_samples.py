@@ -1144,6 +1144,25 @@ class TestImportSamples:
         }
 
     @respx.mock
+    def test_empty_string_optional_fields_are_omitted_not_the_required_ones(self) -> None:
+        route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json={
+                "id": 1, "status": "RUNNING", "created": 1700000000, "accessions": ["ERR1"],
+                "sample_ids": [], "execution_id": None, "error": None,
+            }),
+        )
+
+        client = Client()
+        client.samples.import_samples([
+            SampleImportSpec(accession="ERR1", sample_type="rna_seq", name="", organism_id=""),
+        ])
+
+        payload = json.loads(route.calls[0].request.content)
+        assert payload == {
+            "imports": [{"accession": "ERR1", "sample_type": "rna_seq"}],
+        }
+
+    @respx.mock
     def test_sends_multiple_imports_in_one_request(self) -> None:
         route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json={
