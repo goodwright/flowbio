@@ -16,7 +16,10 @@ would just reject anyway. There is deliberately no other way to supply a
 sample type for ``samples import`` — the sheet is the single source of it.
 A row with every cell blank (e.g. a trailing comma-only line some spreadsheet
 exports append below the data) is skipped rather than treated as a row
-missing values, since there is nothing there to be missing.
+missing values, since there is nothing there to be missing. An unnamed or
+duplicated header column is rejected outright rather than guessed at — a
+column that could mean more than one thing, or nothing at all, isn't
+something the parser can resolve on the user's behalf.
 """
 from __future__ import annotations
 
@@ -78,8 +81,8 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         names). Values are otherwise passed through unchanged, including
         ``accession``, sent to the server as-entered.
     :raises CliUsageError: If the file is not a readable ``.csv``, has an
-        unnamed column, has no rows, or has a row with no accession or no
-        sample_type.
+        unnamed or duplicated column, has no rows, or has a row with no
+        accession or no sample_type.
     """
     if path.suffix.lower() != ".csv":
         raise CliUsageError(
@@ -95,21 +98,12 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
     # parses as "﻿accession" and every row reports a missing accession.
     with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
-        # A hand-authored header (unlike upload-batch's template-generated
-        # one) routinely has a stray space after a comma; reassigning
-        # fieldnames makes every row dict keyed by the trimmed name too.
         headers = [header.strip() for header in reader.fieldnames or []]
         reader.fieldnames = headers
-        unnamed = [position for position, header in enumerate(headers, start=1) if not header]
-        if unnamed:
-            positions = ", ".join(str(position) for position in unnamed)
-            verb = "is" if len(unnamed) == 1 else "are"
-            raise CliUsageError(f"Accession sheet column(s) {positions} {verb} unnamed: {path}.")
+        _check_headers(headers, path)
         metadata_columns = [
             header for header in headers if header not in RESERVED_COLUMNS
         ]
-        # Row 1 is the first row after the header, matching _sheet.py's
-        # convention (and upload-batch's documented "1-based row number").
         for row_number, record in enumerate(reader, start=1):
             if _is_blank_row(record, headers):
                 continue
@@ -135,8 +129,27 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
     return AccessionSheet(path=path, rows=rows)
 
 
+def _check_headers(headers: Sequence[str], path: Path) -> None:
+    unnamed = [position for position, header in enumerate(headers, start=1) if not header]
+    if unnamed:
+        positions = ", ".join(str(position) for position in unnamed)
+        verb = "is" if len(unnamed) == 1 else "are"
+        raise CliUsageError(
+            f"Accession sheet column(s) {positions} {verb} unnamed: {path}. "
+            f"Remove the trailing comma(s) from the header row, or give the column a name.",
+        )
+    duplicates = sorted({header for header in headers if headers.count(header) > 1})
+    if duplicates:
+        names = ", ".join(f"'{name}'" for name in duplicates)
+        verb = "is" if len(duplicates) == 1 else "are"
+        raise CliUsageError(
+            f"Accession sheet column name(s) {names} {verb} duplicated: {path}. "
+            f"Rename the repeated column(s) so each column is unique.",
+        )
+
+
 def _is_blank_row(record: dict[str, str], headers: Sequence[str]) -> bool:
-    return not any((record.get(header) or "").strip() for header in headers)
+    return not any(_cell(record, header) for header in headers)
 
 
 def _missing_value_clause(column: str, missing: list[int]) -> str | None:

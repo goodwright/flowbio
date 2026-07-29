@@ -389,15 +389,17 @@ single-type sheet just repeats the same value down the column. Every value
 is sent as-is (surrounding whitespace trimmed, including in header names);
 the accession format, sample type, and metadata rules are validated
 **server-side**. This command only checks
-that the sheet is a readable ``.csv``, that every column has a name (a
-trailing comma in the header row is rejected rather than becoming a
-metadata attribute with an empty name), and that every row has an accession
-and a sample type — a blank cell in either column rejects the whole sheet
-up front rather than shipping something the server would just reject
-anyway. A row with every cell blank (e.g. a trailing comma-only line some
-spreadsheet exports leave below the data) is skipped rather than treated as
-a row missing values. Rows are counted from ``1`` for the first data row,
-after the header (the same convention as ``upload-batch``'s ``row_number``).
+that the sheet is a readable ``.csv``, that every column has a unique name
+(a trailing comma in the header row is rejected rather than becoming a
+metadata attribute with an empty name, and a repeated column name is
+rejected rather than one silently overwriting another), and that every row
+has an accession and a sample type — a blank cell in either column rejects
+the whole sheet up front rather than shipping something the server would
+just reject anyway. A row with every cell blank (e.g. a trailing comma-only
+line some spreadsheet exports leave below the data) is skipped rather than
+treated as a row missing values. Rows are counted from ``1`` for the first
+data row, after the header (the same convention as ``upload-batch``'s
+``row_number``).
 
 Unlike ``upload-batch``, a metadata column named ``<identifier>__annotation``
 is **not** given any special handling here — it is forwarded as an ordinary
@@ -419,12 +421,12 @@ timestamps, ``null`` if not yet reached), ``accessions``, ``sample_ids``
 
 **Exit codes** — ``0`` the job was created (regardless of its eventual
 outcome — check that with ``import-status``); ``2`` the sheet isn't a
-readable ``.csv``, has an unnamed column, has no rows, or has a row with no
-accession or no sample type; ``1`` the API rejected the batch (e.g. unknown
-sample type, missing required metadata, an unsupported accession format —
-these come back as an HTTP ``422``; ``5`` in the unlikely case it answers
-``400`` instead); ``3`` authentication failure; otherwise the standard
-mapping above.
+readable ``.csv``, has an unnamed or duplicated column, has no rows, or has
+a row with no accession or no sample type; ``1`` the API rejected the batch
+(e.g. unknown sample type, missing required metadata, an unsupported
+accession format — these come back as an HTTP ``422``; ``5`` in the
+unlikely case it answers ``400`` instead); ``3`` authentication failure;
+otherwise the standard mapping above.
 
 **Example**
 

@@ -628,8 +628,9 @@ def _import_command(
     :param client: The authenticated Flow client.
     :param output: The result/error renderer.
     :returns: :attr:`ExitCode.SUCCESS` once the job has been kicked off.
-    :raises CliUsageError: If the sheet is not a readable ``.csv``, has no
-        rows, or has a row with no accession or no sample_type.
+    :raises CliUsageError: If the sheet is not a readable ``.csv``, has an
+        unnamed or duplicated column, has no rows, or has a row with no
+        accession or no sample_type.
     """
     sheet = parse_accession_sheet(args.sheet)
     specs = [row.to_spec() for row in sheet.rows]
