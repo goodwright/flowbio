@@ -19,7 +19,7 @@ rather than guessed at. See :func:`parse_accession_sheet`.
 from __future__ import annotations
 
 import csv
-from collections.abc import Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +28,11 @@ from flowbio.cli._files import existing_file
 from flowbio.v2.samples import SampleImportSpec, SampleTypeId
 
 RESERVED_COLUMNS = ("accession", "name", "organism", "sample_type")
+
+# csv.DictReader's row shape: a header's cell, or None if the row was too
+# short to reach it; a list[str] of any cells beyond the header, under the
+# key None, for a row that was too long.
+ParsedRow = Mapping[str | None, str | list[str] | None]
 
 
 @dataclass(frozen=True)
@@ -75,11 +80,11 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         dropped, and surrounding whitespace trimmed (including in header
         names). Values are otherwise passed through unchanged, including
         ``accession``, sent to the server as-entered.
-    :raises CliUsageError: If the file is not a readable ``.csv``, has an
-        unnamed or duplicated column, has no rows, has a row with fewer
-        cells than the header or with more cells than the header where the
-        overflow isn't blank, or has a row with no accession or no
-        sample_type.
+    :raises CliUsageError: If the file is not a readable ``.csv``, has no
+        header row, has an unnamed or duplicated column, has no rows, has
+        a row with fewer cells than the header or with more cells than the
+        header where the overflow isn't blank, or has a row with no
+        accession or no sample_type.
     """
     if path.suffix.lower() != ".csv":
         raise CliUsageError(
@@ -97,6 +102,12 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
     # parses as "﻿accession" and every row reports a missing accession.
     with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
+        # A present-but-empty fieldnames list means the first line was
+        # blank, not absent (an empty file gives fieldnames=None instead,
+        # caught by the "no rows" check below); left unchecked, every data
+        # row would overflow a zero-column header instead.
+        if reader.fieldnames == []:
+            raise CliUsageError(f"Accession sheet has no header row: {path}.")
         headers = [header.strip() for header in reader.fieldnames or []]
         reader.fieldnames = headers
         _check_headers(headers, path)
@@ -104,7 +115,7 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
             header for header in headers if header not in RESERVED_COLUMNS
         ]
         for row_number, record in enumerate(reader, start=1):
-            overflow_has_value = any((cell or "").strip() for cell in record.get(None) or [])
+            overflow_has_value = any(cell.strip() for cell in _overflow_cells(record))
             if not overflow_has_value and _is_blank_row(record, headers):
                 continue
             # A short row's missing cells could just as easily be trailing
@@ -143,7 +154,10 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         message = f"Accession sheet {'; '.join(clauses)}: {path}."
         remedies: list[str] = []
         if short_rows:
-            remedies.append("fill in the missing cell(s), or remove the row")
+            remedies.append(
+                "add the missing trailing comma(s), leaving the cell(s) blank if that "
+                "column doesn't apply to this row, or fill in a value",
+            )
         if overflow_rows:
             remedies.append(
                 "if a value legitimately contains a comma, quote it; otherwise "
@@ -154,7 +168,7 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
     return AccessionSheet(path=path, rows=rows)
 
 
-def _check_headers(headers: Sequence[str], path: Path) -> None:
+def _check_headers(headers: list[str], path: Path) -> None:
     unnamed = [position for position, header in enumerate(headers, start=1) if not header]
     duplicates = sorted({header for header in headers if header and headers.count(header) > 1})
     if not unnamed and not duplicates:
@@ -167,10 +181,9 @@ def _check_headers(headers: Sequence[str], path: Path) -> None:
     if duplicates:
         clauses.append(_duplicate_columns_clause(duplicates))
         remedies.append("rename the repeated column(s) so each column is unique")
-    remedy = "; and ".join(remedies)
+    remedy = ". ".join(f"{r[0].upper()}{r[1:]}" for r in remedies)
     raise CliUsageError(
-        f"Accession sheet {'; '.join(clauses)}: {path}. "
-        f"{remedy[0].upper()}{remedy[1:]}.",
+        f"Accession sheet {'; '.join(clauses)}: {path}. {remedy}.",
     )
 
 
@@ -186,8 +199,13 @@ def _duplicate_columns_clause(duplicates: list[str]) -> str:
     return f"column name(s) {names} {verb} duplicated"
 
 
-def _is_blank_row(record: dict[str, str], headers: list[str]) -> bool:
+def _is_blank_row(record: ParsedRow, headers: list[str]) -> bool:
     return not any(_cell(record, header) for header in headers)
+
+
+def _overflow_cells(record: ParsedRow) -> list[str]:
+    overflow = record.get(None)
+    return overflow if isinstance(overflow, list) else []
 
 
 def _row_reason_clause(reason: str, rows: list[int]) -> str | None:
@@ -198,13 +216,14 @@ def _row_reason_clause(reason: str, rows: list[int]) -> str | None:
     return f"data row(s) {numbers} {verb} {reason}"
 
 
-def _cell(record: dict[str, str], column: str) -> str | None:
-    value = (record.get(column) or "").strip()
+def _cell(record: ParsedRow, column: str) -> str | None:
+    raw = record.get(column)
+    value = (raw if isinstance(raw, str) else "").strip()
     return value or None
 
 
 def _build_row(
-    record: dict[str, str],
+    record: ParsedRow,
     row_number: int,
     metadata_columns: list[str],
     accession: str,

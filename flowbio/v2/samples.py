@@ -526,7 +526,7 @@ class SampleResource:
         return SampleImportJob(**self._transport.get(f"/v2/sample-imports/{job_id}"))
 
     @staticmethod
-    def _import_spec_fields(spec: SampleImportSpec) -> dict:
+    def _import_spec_fields(spec: SampleImportSpec) -> dict[str, str | dict[str, str]]:
         """Build the wire payload for one accession.
 
         Every field is sent under its dataclass name as-is; only ``name``,
