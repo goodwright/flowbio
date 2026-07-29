@@ -1285,7 +1285,39 @@ class TestSamplesImport:
 
         assert result.exit_code == 2
         assert route.call_count == 0
-        assert "unnamed" in result.stderr
+        assert "column(s) 4 is unnamed" in result.stderr
+
+    @respx.mock
+    def test_duplicated_header_column_is_usage_error(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        route = respx.post(SAMPLE_IMPORTS_URL)
+        sheet = tmp_path / "accessions.csv"
+        sheet.write_text("accession,sample_type,treatment,treatment\nERR1,rna_seq,drugA,drugB\n")
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import", "--sheet", str(sheet),
+        )
+
+        assert result.exit_code == 2
+        assert route.call_count == 0
+        assert "column name(s) 'treatment' is duplicated" in result.stderr
+
+    @respx.mock
+    def test_row_with_more_cells_than_the_header_is_usage_error(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        route = respx.post(SAMPLE_IMPORTS_URL)
+        sheet = tmp_path / "accessions.csv"
+        sheet.write_text("accession,sample_type,name\nERR1,rna_seq,liver_r1,note\n")
+
+        result = run_cli(
+            "--token", TOKEN, "samples", "import", "--sheet", str(sheet),
+        )
+
+        assert result.exit_code == 2
+        assert route.call_count == 0
+        assert "data row(s) 1 has more cells than the header" in result.stderr
 
 
 class TestSamplesImportStatus:

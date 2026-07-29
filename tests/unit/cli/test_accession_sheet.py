@@ -131,6 +131,36 @@ class TestParseAccessionSheet:
         with pytest.raises(CliUsageError, match=r"column name\(s\) 'accession' is duplicated"):
             parse_accession_sheet(path)
 
+    def test_unnamed_and_duplicated_columns_reported_in_one_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "sheet.csv"
+        path.write_text(
+            "accession,sample_type,treatment,treatment,\nERR1,rna_seq,drugA,drugB,note\n",
+        )
+
+        with pytest.raises(CliUsageError) as excinfo:
+            parse_accession_sheet(path)
+
+        assert "column(s) 5 is unnamed" in str(excinfo.value)
+        assert "column name(s) 'treatment' is duplicated" in str(excinfo.value)
+
+    def test_row_with_more_cells_than_the_header_is_usage_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "sheet.csv"
+        path.write_text("accession,sample_type,name\nERR1,rna_seq,liver_r1,note\n")
+
+        with pytest.raises(CliUsageError, match=r"data row\(s\) 1 has more cells than the header"):
+            parse_accession_sheet(path)
+
+    def test_shifted_right_row_with_a_real_value_is_usage_error_not_skipped(
+        self, tmp_path: Path,
+    ) -> None:
+        # Every *named* cell is blank, but the accession landed in the
+        # overflow column — this must not be treated as a wholly-blank row.
+        path = tmp_path / "sheet.csv"
+        path.write_text("accession,sample_type,name\n,,,ERR1\n")
+
+        with pytest.raises(CliUsageError, match=r"data row\(s\) 1 has more cells than the header"):
+            parse_accession_sheet(path)
+
     def test_non_csv_xlsx_rejected_with_export_message(self, tmp_path: Path) -> None:
         xlsx = tmp_path / "sheet.xlsx"
         xlsx.write_bytes(b"PK")
@@ -152,6 +182,13 @@ class TestParseAccessionSheet:
     def test_header_only_sheet_is_usage_error(self, tmp_path: Path) -> None:
         with pytest.raises(CliUsageError, match="no rows"):
             parse_accession_sheet(_write_sheet(tmp_path))
+
+    def test_wholly_empty_file_is_usage_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "sheet.csv"
+        path.write_text("")
+
+        with pytest.raises(CliUsageError, match="no rows"):
+            parse_accession_sheet(path)
 
     def test_row_with_blank_accession_is_usage_error(self, tmp_path: Path) -> None:
         with pytest.raises(CliUsageError, match=r"data row\(s\) 2 has no accession"):
