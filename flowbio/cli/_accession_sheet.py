@@ -11,9 +11,11 @@ are all checked server-side when the sheet is submitted — duplicating that
 locally would just be a second, driftable copy of the same rules. What *is*
 checked locally is structural: every row must have an accession and a
 sample type to mean anything at all, every header column must have a
-unique, non-empty name, and every row must have exactly as many cells as
-the header — any of these is a case the parser can't resolve on the user's
-behalf, so it's rejected rather than guessed at. See :func:`parse_accession_sheet`.
+unique, non-empty name, and no row may have more cells than the header —
+any of these is a case the parser can't resolve on the user's behalf, so
+it's rejected rather than guessed at. A row with *fewer* cells than the
+header (e.g. trailing optional columns omitted) has its missing cells
+treated as blank, same as an empty cell. See :func:`parse_accession_sheet`.
 """
 from __future__ import annotations
 
@@ -103,10 +105,10 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         for row_number, record in enumerate(reader, start=1):
             # csv.DictReader stores a row with more cells than the header
             # under the None key; that overflow can't be attributed to any
-            # column, so it's rejected rather than silently dropped (or, if
-            # every named cell happens to be blank, the whole row silently
-            # skipped as though it carried nothing).
-            if record.get(None):
+            # column, so a row whose overflow actually carries a value is
+            # rejected rather than silently dropped.
+            overflow_has_value = any((cell or "").strip() for cell in record.get(None) or [])
+            if overflow_has_value:
                 extra_cells.append(row_number)
                 continue
             if _is_blank_row(record, headers):
@@ -139,30 +141,28 @@ def _check_headers(headers: Sequence[str], path: Path) -> None:
     duplicates = sorted({header for header in headers if header and headers.count(header) > 1})
     if not unnamed and not duplicates:
         return
-    clauses = [
-        clause for clause in (
-            _unnamed_columns_clause(unnamed),
-            _duplicate_columns_clause(duplicates),
-        ) if clause is not None
-    ]
+    clauses: list[str] = []
+    remedies: list[str] = []
+    if unnamed:
+        clauses.append(_unnamed_columns_clause(unnamed))
+        remedies.append("remove the trailing comma(s) from the header row, or give the column(s) a name")
+    if duplicates:
+        clauses.append(_duplicate_columns_clause(duplicates))
+        remedies.append("rename the repeated column(s) so each column is unique")
+    remedy = "; and ".join(remedies)
     raise CliUsageError(
-        f"Accession sheet {'; '.join(clauses)}: {path}. Remove the trailing comma(s) "
-        f"from the header row, give unnamed columns a name, and rename any repeated "
-        f"column so each column is unique.",
+        f"Accession sheet {'; '.join(clauses)}: {path}. "
+        f"{remedy[0].upper()}{remedy[1:]}.",
     )
 
 
-def _unnamed_columns_clause(unnamed: list[int]) -> str | None:
-    if not unnamed:
-        return None
+def _unnamed_columns_clause(unnamed: list[int]) -> str:
     positions = ", ".join(str(position) for position in unnamed)
     verb = "is" if len(unnamed) == 1 else "are"
     return f"column(s) {positions} {verb} unnamed"
 
 
-def _duplicate_columns_clause(duplicates: list[str]) -> str | None:
-    if not duplicates:
-        return None
+def _duplicate_columns_clause(duplicates: list[str]) -> str:
     names = ", ".join(f"'{name}'" for name in duplicates)
     verb = "is" if len(duplicates) == 1 else "are"
     return f"column name(s) {names} {verb} duplicated"

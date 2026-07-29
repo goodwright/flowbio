@@ -528,8 +528,9 @@ class SampleResource:
     @staticmethod
     def _import_spec_fields(spec: SampleImportSpec) -> dict:
         fields = asdict(spec)
-        fields["organism"] = fields.pop("organism_id")
-        return {key: value for key, value in fields.items() if value}
+        organism = fields.pop("organism_id")
+        optional = {"name": fields.pop("name"), "organism": organism, "metadata": fields.pop("metadata")}
+        return {**fields, **{key: value for key, value in optional.items() if value}}
 
     def _create_metadata_attribute(self, item: dict) -> MetadataAttribute:
         item["required_for_sample_types"] = [

@@ -398,10 +398,11 @@ rejects up front rather than guessing:
   a trailing comma in the header row (or a copy-pasted column) is rejected
   rather than becoming an empty-named metadata attribute, or one column
   silently overwriting another.
-- Every data row must have exactly as many cells as the header — a row
-  with extra cells (e.g. one stray comma) is rejected rather than dropping
-  the overflow, or silently skipping the row if that leaves every named
-  cell blank.
+- No data row may have more cells than the header — an extra cell (e.g. one
+  stray comma) is rejected rather than dropping the overflow, or silently
+  skipping the row if that leaves every named cell blank. A row with
+  *fewer* cells than the header has its missing trailing cells treated as
+  blank, the same as an empty cell.
 - Every row must have an accession and a sample type; a blank cell in
   either column rejects the whole sheet.
 
@@ -430,10 +431,9 @@ timestamps, ``null`` if not yet reached), ``accessions``, ``sample_ids``
 (empty until the job completes), ``execution_id``, ``error``.
 
 **Exit codes** — ``0`` the job was created (regardless of its eventual
-outcome — check that with ``import-status``); ``2`` the sheet isn't a
-readable ``.csv``, has an unnamed or duplicated column, has no rows, has a
-row with more cells than the header, or has a row with no accession or no
-sample type; ``1`` the API rejected the batch
+outcome — check that with ``import-status``); ``2`` the sheet is
+structurally invalid (see the checks above), including not being a
+readable ``.csv`` or having no rows; ``1`` the API rejected the batch
 (e.g. unknown sample type, missing required metadata, an unsupported
 accession format — these come back as an HTTP ``422``; ``5`` in the
 unlikely case it answers ``400`` instead); ``3`` authentication failure;
