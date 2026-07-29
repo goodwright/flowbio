@@ -77,8 +77,9 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         dropped, and surrounding whitespace trimmed (including in header
         names). Values are otherwise passed through unchanged, including
         ``accession``, sent to the server as-entered.
-    :raises CliUsageError: If the file is not a readable ``.csv``, has no
-        rows, or has a row with no accession or no sample_type.
+    :raises CliUsageError: If the file is not a readable ``.csv``, has an
+        unnamed column, has no rows, or has a row with no accession or no
+        sample_type.
     """
     if path.suffix.lower() != ".csv":
         raise CliUsageError(
@@ -99,6 +100,11 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         # fieldnames makes every row dict keyed by the trimmed name too.
         headers = [header.strip() for header in reader.fieldnames or []]
         reader.fieldnames = headers
+        unnamed = [position for position, header in enumerate(headers, start=1) if not header]
+        if unnamed:
+            positions = ", ".join(str(position) for position in unnamed)
+            verb = "is" if len(unnamed) == 1 else "are"
+            raise CliUsageError(f"Accession sheet column(s) {positions} {verb} unnamed: {path}.")
         metadata_columns = [
             header for header in headers if header not in RESERVED_COLUMNS
         ]
