@@ -398,11 +398,13 @@ rejects up front rather than guessing:
   a trailing comma in the header row (or a copy-pasted column) is rejected
   rather than becoming an empty-named metadata attribute, or one column
   silently overwriting another.
-- No data row may have more cells than the header — an extra cell (e.g. one
-  stray comma) is rejected rather than dropping the overflow, or silently
-  skipping the row if that leaves every named cell blank. A row with
-  *fewer* cells than the header has its missing trailing cells treated as
-  blank, the same as an empty cell.
+- A data row must have at least as many cells as the header — a *short*
+  row (e.g. trailing optional columns omitted entirely, rather than left
+  as empty cells) is always rejected, not treated as having blank values.
+  A row with *more* cells than the header is rejected only if the overflow
+  carries a value (e.g. an unquoted comma inside a value shifting a real
+  value into the extra cell); a purely blank overflow (e.g. one stray
+  trailing comma) is dropped silently.
 - Every row must have an accession and a sample type; a blank cell in
   either column rejects the whole sheet.
 

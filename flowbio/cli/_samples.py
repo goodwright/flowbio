@@ -629,8 +629,9 @@ def _import_command(
     :param output: The result/error renderer.
     :returns: :attr:`ExitCode.SUCCESS` once the job has been kicked off.
     :raises CliUsageError: If the sheet is not a readable ``.csv``, has an
-        unnamed or duplicated column, has no rows, has a row with more
-        cells than the header, or has a row with no accession or no
+        unnamed or duplicated column, has no rows, has a row with fewer
+        cells than the header or with more cells than the header where the
+        overflow isn't blank, or has a row with no accession or no
         sample_type.
     """
     sheet = parse_accession_sheet(args.sheet)
