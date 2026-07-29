@@ -413,7 +413,8 @@ cells than the header (e.g. a trailing comma-only line some spreadsheet
 exports leave below the data, however many commas it happens to have) — is
 skipped rather than treated as a row missing values. Rows are counted from
 ``1`` for the first data row, after the header (the same convention as
-``upload-batch``'s ``row_number``).
+``upload-batch``'s ``row_number``) — except a line with no commas at all
+(as opposed to one with only blank cells), which doesn't consume a number.
 
 Unlike ``upload-batch``, a metadata column named ``<identifier>__annotation``
 is **not** given any special handling here — it is forwarded as an ordinary

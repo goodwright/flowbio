@@ -535,9 +535,9 @@ class SampleResource:
         sent even when unset unless it's also added to ``optional`` here.
         """
         fields = asdict(spec)
-        organism = fields.pop("organism_id")
-        optional = {"name": fields.pop("name"), "organism": organism, "metadata": fields.pop("metadata")}
-        return {**fields, **{key: value for key, value in optional.items() if value}}
+        fields["organism"] = fields.pop("organism_id")
+        optional = ("name", "organism", "metadata")
+        return {key: value for key, value in fields.items() if key not in optional or value}
 
     def _create_metadata_attribute(self, item: dict) -> MetadataAttribute:
         item["required_for_sample_types"] = [
