@@ -62,6 +62,8 @@ class TestParseAccessionSheet:
             CliUsageError, match=r"data row\(s\) 1 has fewer cells than the header",
         ):
             parse_accession_sheet(path)
+
+    def test_name_and_organism_are_parsed(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(_write_sheet(
             tmp_path,
             _record(name="liver_r1", organism="Hs"),
