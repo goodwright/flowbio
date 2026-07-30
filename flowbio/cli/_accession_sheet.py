@@ -102,7 +102,7 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
     # parses as "﻿accession" and every row reports a missing accession.
     with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
-        headers, metadata_columns = _read_header(reader, path)
+        headers, metadata_columns = _read_header(reader)
         for row_number, record in enumerate(reader, start=1):
             overflow_has_value = any(cell.strip() for cell in _overflow_cells(record))
             if not overflow_has_value and _is_blank_row(record, headers):
@@ -125,25 +125,24 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
             if accession is None or sample_type is None:
                 continue
             rows.append(_build_row(record, row_number, metadata_columns, accession, sample_type))
-    _check_rows(path, rows, short_rows, overflow_rows, missing_accession, missing_sample_type)
+    _check_rows(rows, short_rows, overflow_rows, missing_accession, missing_sample_type)
     return AccessionSheet(path=path, rows=rows)
 
 
-def _read_header(reader: csv.DictReader[str], path: Path) -> tuple[list[str], list[str]]:
+def _read_header(reader: csv.DictReader[str]) -> tuple[list[str], list[str]]:
     """Validate the sheet's header row and return its columns and metadata columns."""
     # A blank first line parses as fieldnames == [] — distinct from an
     # absent one, which is fieldnames is None.
     if reader.fieldnames == []:
-        raise CliUsageError(f"Accession sheet has no header row: {path}.")
+        raise CliUsageError("Accession sheet has no header row.")
     headers = [header.strip() for header in reader.fieldnames or []]
     reader.fieldnames = headers
-    _check_headers(headers, path)
+    _check_headers(headers)
     metadata_columns = [header for header in headers if header not in RESERVED_COLUMNS]
     return headers, metadata_columns
 
 
 def _check_rows(
-    path: Path,
     rows: list[AccessionSheetRow],
     short_rows: list[int],
     overflow_rows: list[int],
@@ -152,7 +151,7 @@ def _check_rows(
 ) -> None:
     """Raise if the sheet had no rows at all, or any row failed a structural check."""
     if not (rows or short_rows or overflow_rows or missing_accession or missing_sample_type):
-        raise CliUsageError(f"Accession sheet has no rows: {path}.")
+        raise CliUsageError("Accession sheet has no rows.")
     if not (short_rows or overflow_rows or missing_accession or missing_sample_type):
         return
     clauses = [
@@ -163,7 +162,7 @@ def _check_rows(
             _row_reason_clause("no sample_type", missing_sample_type),
         ) if clause is not None
     ]
-    message = f"Accession sheet {'; '.join(clauses)}: {path}."
+    message = f"Accession sheet {'; '.join(clauses)}."
     remedies: list[str] = []
     if short_rows:
         remedies.append(
@@ -179,7 +178,7 @@ def _check_rows(
     raise CliUsageError(message)
 
 
-def _check_headers(headers: list[str], path: Path) -> None:
+def _check_headers(headers: list[str]) -> None:
     unnamed = [position for position, header in enumerate(headers, start=1) if not header]
     duplicates = sorted({header for header in headers if header and headers.count(header) > 1})
     if not unnamed and not duplicates:
@@ -193,9 +192,7 @@ def _check_headers(headers: list[str], path: Path) -> None:
         clauses.append(_duplicate_columns_clause(duplicates))
         remedies.append("rename the repeated column(s) so each column is unique")
     remedy = ". ".join(f"{r[0].upper()}{r[1:]}" for r in remedies)
-    raise CliUsageError(
-        f"Accession sheet {'; '.join(clauses)}: {path}. {remedy}.",
-    )
+    raise CliUsageError(f"Accession sheet {'; '.join(clauses)}. {remedy}.")
 
 
 def _unnamed_columns_clause(unnamed: list[int]) -> str:
