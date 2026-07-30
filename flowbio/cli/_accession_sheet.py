@@ -102,16 +102,7 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
     # parses as "﻿accession" and every row reports a missing accession.
     with path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
-        # A blank first line parses as fieldnames == [] — distinct from an
-        # absent one, which is fieldnames is None.
-        if reader.fieldnames == []:
-            raise CliUsageError(f"Accession sheet has no header row: {path}.")
-        headers = [header.strip() for header in reader.fieldnames or []]
-        reader.fieldnames = headers
-        _check_headers(headers, path)
-        metadata_columns = [
-            header for header in headers if header not in RESERVED_COLUMNS
-        ]
+        headers, metadata_columns = _read_header(reader, path)
         for row_number, record in enumerate(reader, start=1):
             overflow_has_value = any(cell.strip() for cell in _overflow_cells(record))
             if not overflow_has_value and _is_blank_row(record, headers):
@@ -134,36 +125,58 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
             if accession is None or sample_type is None:
                 continue
             rows.append(_build_row(record, row_number, metadata_columns, accession, sample_type))
-    sheet_is_empty = (
-        not rows and not short_rows and not overflow_rows
-        and not missing_accession and not missing_sample_type
-    )
-    if sheet_is_empty:
-        raise CliUsageError(f"Accession sheet has no rows: {path}.")
-    if short_rows or overflow_rows or missing_accession or missing_sample_type:
-        clauses = [
-            clause for clause in (
-                _row_reason_clause("fewer cells than the header", short_rows),
-                _row_reason_clause("more cells than the header", overflow_rows),
-                _row_reason_clause("no accession", missing_accession),
-                _row_reason_clause("no sample_type", missing_sample_type),
-            ) if clause is not None
-        ]
-        message = f"Accession sheet {'; '.join(clauses)}: {path}."
-        remedies: list[str] = []
-        if short_rows:
-            remedies.append(
-                "add the missing trailing comma(s), leaving the cell(s) blank if that "
-                "column doesn't apply to this row, or fill in a value",
-            )
-        if overflow_rows:
-            remedies.append(
-                "if a value legitimately contains a comma, quote it; otherwise "
-                "remove the extra cell(s)",
-            )
-        message += "".join(f" {remedy[0].upper()}{remedy[1:]}." for remedy in remedies)
-        raise CliUsageError(message)
+    _check_rows(path, rows, short_rows, overflow_rows, missing_accession, missing_sample_type)
     return AccessionSheet(path=path, rows=rows)
+
+
+def _read_header(reader: csv.DictReader[str], path: Path) -> tuple[list[str], list[str]]:
+    """Validate the sheet's header row and return its columns and metadata columns."""
+    # A blank first line parses as fieldnames == [] — distinct from an
+    # absent one, which is fieldnames is None.
+    if reader.fieldnames == []:
+        raise CliUsageError(f"Accession sheet has no header row: {path}.")
+    headers = [header.strip() for header in reader.fieldnames or []]
+    reader.fieldnames = headers
+    _check_headers(headers, path)
+    metadata_columns = [header for header in headers if header not in RESERVED_COLUMNS]
+    return headers, metadata_columns
+
+
+def _check_rows(
+    path: Path,
+    rows: list[AccessionSheetRow],
+    short_rows: list[int],
+    overflow_rows: list[int],
+    missing_accession: list[int],
+    missing_sample_type: list[int],
+) -> None:
+    """Raise if the sheet had no rows at all, or any row failed a structural check."""
+    if not (rows or short_rows or overflow_rows or missing_accession or missing_sample_type):
+        raise CliUsageError(f"Accession sheet has no rows: {path}.")
+    if not (short_rows or overflow_rows or missing_accession or missing_sample_type):
+        return
+    clauses = [
+        clause for clause in (
+            _row_reason_clause("fewer cells than the header", short_rows),
+            _row_reason_clause("more cells than the header", overflow_rows),
+            _row_reason_clause("no accession", missing_accession),
+            _row_reason_clause("no sample_type", missing_sample_type),
+        ) if clause is not None
+    ]
+    message = f"Accession sheet {'; '.join(clauses)}: {path}."
+    remedies: list[str] = []
+    if short_rows:
+        remedies.append(
+            "add the missing trailing comma(s), leaving the cell(s) blank if that "
+            "column doesn't apply to this row, or fill in a value",
+        )
+    if overflow_rows:
+        remedies.append(
+            "if a value legitimately contains a comma, quote it; otherwise "
+            "remove the extra cell(s)",
+        )
+    message += "".join(f" {remedy[0].upper()}{remedy[1:]}." for remedy in remedies)
+    raise CliUsageError(message)
 
 
 def _check_headers(headers: list[str], path: Path) -> None:
