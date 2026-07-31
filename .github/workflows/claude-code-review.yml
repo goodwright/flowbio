@@ -21,8 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-      issues: read
+      pull-requests: write
+      issues: write
       id-token: write
 
     steps:
@@ -36,9 +36,49 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          use_sticky_comment: true
+          prompt: |
+            Review this pull request as an experienced engineer on this
+            codebase. This repo's CLAUDE.md is your rubric — follow it, and where
+            a more specific guideline applies, it wins.
+
+            Priorities, most important first — this is what this team cares about:
+            1. Make invalid states unrepresentable. Flag nullable/optional fields
+               with no real "absent" case, tri-state "omitted vs explicit null"
+               confusion in partial-update schemas, mode/boolean flags that should
+               be two functions, and fields only valid together but typed apart.
+            2. Tests for new or changed behaviour — especially the negative and
+               edge cases (invalid input, missing record, empty input, the
+               default/omitted argument). A missing test for new behaviour is a
+               finding even when the code looks correct.
+            3. Encapsulation — anything exposed that could be private (_-prefixed).
+            4. Domain types over bare primitives for ids/paths/urls/tokens/counts,
+               applied where the value is created, not as casts at call sites.
+            5. Reuse over duplication — logic a model, helper, or library already owns.
+            6. Simplicity and placement — speculative abstraction, code in the wrong
+               module, dead code, and comments that state "what" instead of "why".
+
+            Rules of engagement:
+            - Only comment when you are confident the issue is real and worth the
+              author's attention. Prefer a few high-value, design-level comments
+              over many small nits.
+            - A clean PR is a success. If nothing clears that bar, post NO comments
+              at all — never invent findings or restate the diff to look thorough.
+            - Do not report anything a formatter, linter, or type checker catches;
+              CI runs those. Do not report pre-existing issues on lines this PR
+              did not change.
+
+            How to post (the PR branch is already checked out here):
+            - Leave each finding as an inline comment on the specific line with
+              `mcp__github_inline_comment__create_inline_comment` (pass
+              `confirmed: true`). Keep each short: what is wrong, why it matters
+              (cite CLAUDE.md where relevant), and what would resolve it.
+            - Only if you have findings, add one brief top-level summary with
+              `gh pr comment`. If the PR is clean, post nothing — call no comment
+              tool at all.
+            - Post feedback only through these GitHub tools; do not return review
+              text as your final message.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-
