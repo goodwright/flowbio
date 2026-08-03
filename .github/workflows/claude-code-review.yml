@@ -10,6 +10,13 @@ on:
     #   - "src/**/*.js"
     #   - "src/**/*.jsx"
 
+# One review per PR at a time: a new push cancels the in-flight review so the
+# only verdict that lands is for the latest commit (implementbot keys off the
+# verdict's SHA, so stale verdicts must not race the current one).
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   claude-review:
     # Optional: Filter by PR author
@@ -36,11 +43,16 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          use_sticky_comment: true
           prompt: |
             Review this pull request as an experienced engineer on this
             codebase. This repo's CLAUDE.md is your rubric — follow it, and where
             a more specific guideline applies, it wins.
+
+            Context for posting (do not review these values, just use them):
+            - Repository: ${{ github.repository }}
+            - PR number: ${{ github.event.pull_request.number }}
+            - Head commit SHA: ${{ github.event.pull_request.head.sha }}
+            - Opened by implementbot: ${{ contains(github.event.pull_request.body, 'implementbot:issue=') }}
 
             Priorities, most important first — this is what this team cares about:
             1. Make invalid states unrepresentable. Flag nullable/optional fields
@@ -62,8 +74,11 @@ jobs:
             - Only comment when you are confident the issue is real and worth the
               author's attention. Prefer a few high-value, design-level comments
               over many small nits.
-            - A clean PR is a success. If nothing clears that bar, post NO comments
-              at all — never invent findings or restate the diff to look thorough.
+            - Classify each finding as BLOCKING (a real correctness, spec, or
+              guideline violation that should not merge as-is) or OPTIONAL (a
+              nice-to-have or minor improvement). Only blocking findings gate.
+            - A clean PR is a success. Never invent findings or restate the diff to
+              look thorough.
             - Do not report anything a formatter, linter, or type checker catches;
               CI runs those. Do not report pre-existing issues on lines this PR
               did not change.
@@ -71,14 +86,31 @@ jobs:
             How to post (the PR branch is already checked out here):
             - Leave each finding as an inline comment on the specific line with
               `mcp__github_inline_comment__create_inline_comment` (pass
-              `confirmed: true`). Keep each short: what is wrong, why it matters
-              (cite CLAUDE.md where relevant), and what would resolve it.
-            - Only if you have findings, add one brief top-level summary with
-              `gh pr comment`. If the PR is clean, post nothing — call no comment
-              tool at all.
+              `confirmed: true`). Say whether it is BLOCKING or OPTIONAL, then what
+              is wrong, why it matters (cite CLAUDE.md where relevant), and what
+              would resolve it.
+            - Then handle the top-level verdict comment by whether implementbot
+              opened this PR (see the "Opened by implementbot" value above):
+
+              * If TRUE — always post a verdict, even when the PR is clean, because
+                implementbot waits for it. Build the body with this exact first line:
+                  `<!-- claude-review sha=<HEAD_SHA> verdict=<clean|changes> -->`
+                using the Head commit SHA above, and `changes` if you left any
+                BLOCKING finding else `clean`; follow it with one or two sentences
+                (and "details are inline" when there are findings). Post it as a
+                single STICKY comment — never a second one: first look for your
+                previous verdict with
+                  `gh api "repos/<REPO>/issues/<PR>/comments" --jq 'map(select(.body|startswith("<!-- claude-review")))|.[0].id // empty'`
+                if it returns an id, update that comment in place with
+                  `gh api --method PATCH "repos/<REPO>/issues/comments/<id>" -f body='<body>'`
+                otherwise create it with `gh pr comment <PR> --body '<body>'`.
+
+              * If FALSE (a human PR) — do not post any verdict comment. If there
+                are no findings at all, post nothing and stay silent.
+
             - Post feedback only through these GitHub tools; do not return review
               text as your final message.
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*)"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
