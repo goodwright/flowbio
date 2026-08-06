@@ -174,6 +174,9 @@ class SampleImportSpec:
         when omitted.
     :param organism_id: Optional organism id (e.g. ``"Hs"``) to associate
         with the sample, sent as ``organism``.
+    :param project_id: Optional project id to assign the imported sample to,
+        sent as ``project``. Must be a project you own; see
+        :meth:`SampleResource.get_owned_projects`.
     :param metadata: Optional metadata key-value pairs. See
         :ref:`metadata-attributes` for details on required attributes.
     """
@@ -182,6 +185,7 @@ class SampleImportSpec:
     sample_type: SampleTypeId
     name: str | None = None
     organism_id: str | None = None
+    project_id: str | None = None
     metadata: dict[str, str] | None = None
 
 
@@ -530,13 +534,15 @@ class SampleResource:
         """Build the wire payload for one accession.
 
         Every field is sent under its dataclass name as-is; only ``name``,
-        ``organism`` (renamed from ``organism_id``), and ``metadata`` are
-        omitted when empty. A field added to :class:`SampleImportSpec` is
-        sent even when unset unless it's also added to ``optional`` here.
+        ``organism`` (renamed from ``organism_id``), ``project`` (renamed
+        from ``project_id``), and ``metadata`` are omitted when empty. A
+        field added to :class:`SampleImportSpec` is sent even when unset
+        unless it's also added to ``optional`` here.
         """
         fields = asdict(spec)
         fields["organism"] = fields.pop("organism_id")
-        optional = ("name", "organism", "metadata")
+        fields["project"] = fields.pop("project_id")
+        optional = ("name", "organism", "project", "metadata")
         return {key: value for key, value in fields.items() if key not in optional or value}
 
     def _create_metadata_attribute(self, item: dict) -> MetadataAttribute:
