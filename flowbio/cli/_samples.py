@@ -621,8 +621,9 @@ def _import_command(
     Every row is submitted as-is: the accession format, sample type,
     organism, project, pubmed, and metadata rules are all validated
     server-side, so a malformed sheet surfaces as a normal
-    :class:`FlowApiError` rather than a local pre-flight rejection. This command does not wait for the job to
-    finish — poll it yourself with ``samples import-status``.
+    :class:`FlowApiError` rather than a local pre-flight rejection. This
+    command does not wait for the job to finish — poll it yourself with
+    ``samples import-status``.
 
     :param args: Parsed command-line arguments.
     :param client: The authenticated Flow client.
