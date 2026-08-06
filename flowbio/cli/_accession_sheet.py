@@ -2,11 +2,11 @@
 
 An accession sheet is a CSV with one row per accession to import: required
 ``accession`` and ``sample_type`` columns, plus optional ``name``/
-``organism``/``project`` and per-accession metadata columns. This mirrors
-``_sheet.py``'s reads-based sample sheet, but the reserved columns differ —
-there is nothing to upload (no ``reads1``/``reads2``).
+``organism``/``project``/``pubmed`` and per-accession metadata columns. This
+mirrors ``_sheet.py``'s reads-based sample sheet, but the reserved columns
+differ — there is nothing to upload (no ``reads1``/``reads2``).
 
-Domain rules (accession format, duplicates, sample type, organism, project, metadata)
+Domain rules (accession format, duplicates, sample type, organism, project, pubmed, metadata)
 are all checked server-side when the sheet is submitted — duplicating that
 locally would just be a second, driftable copy of the same rules. What *is*
 checked locally is structural: every row must have an accession and a
@@ -27,7 +27,7 @@ from flowbio.cli._exit_codes import CliUsageError
 from flowbio.cli._files import existing_file
 from flowbio.v2.samples import SampleImportSpec, SampleTypeId
 
-RESERVED_COLUMNS = ("accession", "name", "organism", "project", "sample_type")
+RESERVED_COLUMNS = ("accession", "name", "organism", "project", "pubmed", "sample_type")
 
 ParsedRow = Mapping[str | None, str | list[str] | None]
 """One row as ``csv.DictReader`` yields it: a header's cell, or ``None`` if
@@ -44,6 +44,7 @@ class AccessionSheetRow:
     name: str | None
     organism: str | None
     project: str | None
+    pubmed: str | None
     sample_type: SampleTypeId
     metadata: dict[str, str]
 
@@ -61,6 +62,7 @@ class AccessionSheetRow:
             name=self.name,
             organism_id=self.organism,
             project_id=self.project,
+            pubmed=self.pubmed,
             metadata=self.metadata or None,
         )
 
@@ -250,6 +252,7 @@ def _build_row(
         name=_cell(record, "name"),
         organism=_cell(record, "organism"),
         project=_cell(record, "project"),
+        pubmed=_cell(record, "pubmed"),
         sample_type=SampleTypeId(sample_type),
         metadata=metadata,
     )

@@ -1129,6 +1129,7 @@ class TestImportSamples:
                 name="my_sample",
                 organism_id="Hs",
                 project_id="proj_1",
+                pubmed="12345678",
                 metadata={"strandedness": "reverse"},
             ),
         ])
@@ -1141,6 +1142,7 @@ class TestImportSamples:
                 "name": "my_sample",
                 "organism": "Hs",
                 "project": "proj_1",
+                "pubmed": "12345678",
                 "metadata": {"strandedness": "reverse"},
             }],
         }
@@ -1156,7 +1158,9 @@ class TestImportSamples:
 
         client = Client()
         client.samples.import_samples([
-            SampleImportSpec(accession="ERR1", sample_type="rna_seq", name="", organism_id="", project_id=""),
+            SampleImportSpec(
+                accession="ERR1", sample_type="rna_seq", name="", organism_id="", project_id="", pubmed="",
+            ),
         ])
 
         payload = json.loads(route.calls[0].request.content)
