@@ -50,6 +50,12 @@ SampleTypeId = NewType("SampleTypeId", str)
 :meth:`SampleResource.get_types`."""
 
 
+PubMedId = NewType("PubMedId", str)
+"""A PubMed identifier: a bare integer written as a string (e.g.
+``"12345678"``). Held as a ``str`` because it travels verbatim through CSV
+cells and JSON, but the value must be all digits — validated server-side."""
+
+
 class SampleType(BaseModel, frozen=True):
     """A type of sample that can be uploaded to the Flow platform.
 
@@ -188,7 +194,7 @@ class SampleImportSpec:
     name: str | None = None
     organism_id: str | None = None
     project_id: str | None = None
-    pubmed: str | None = None
+    pubmed: PubMedId | None = None
     metadata: dict[str, str] | None = None
 
 
@@ -536,17 +542,16 @@ class SampleResource:
     def _import_spec_fields(spec: SampleImportSpec) -> dict[str, str | dict[str, str]]:
         """Build the wire payload for one accession.
 
-        Every field is sent under its dataclass name as-is; only ``name``,
-        ``organism`` (renamed from ``organism_id``), ``project`` (renamed
-        from ``project_id``), ``pubmed``, and ``metadata`` are omitted when
-        empty. A field added to :class:`SampleImportSpec` is sent even when
-        unset unless it's also added to ``optional`` here.
+        Only ``accession`` and ``sample_type`` are always sent; every other
+        field is omitted when empty. ``organism_id``/``project_id`` are sent
+        under their wire names (``organism``/``project``); the rest keep their
+        dataclass name.
         """
         fields = asdict(spec)
         fields["organism"] = fields.pop("organism_id")
         fields["project"] = fields.pop("project_id")
-        optional = ("name", "organism", "project", "pubmed", "metadata")
-        return {key: value for key, value in fields.items() if key not in optional or value}
+        required = ("accession", "sample_type")
+        return {key: value for key, value in fields.items() if key in required or value}
 
     def _create_metadata_attribute(self, item: dict) -> MetadataAttribute:
         item["required_for_sample_types"] = [
