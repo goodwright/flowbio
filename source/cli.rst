@@ -380,8 +380,8 @@ yourself.
 
 Run ``flowbio samples import --help`` for the full option list. The sheet is
 a CSV with required ``accession``/``sample_type`` columns, plus optional
-``name``/``organism`` and metadata columns (there is no ``batch-template``
-equivalent for it, since it has no reads files or project field). ``name``
+``name``/``organism``/``project`` and metadata columns (there is no
+``batch-template`` equivalent for it, since it has no reads files). ``name``
 defaults to the accession when omitted. There is deliberately no
 ``--sample-type`` flag: the sheet's own column is the only way to supply a
 sample type, so a mixed-type sheet needs no special handling and a
@@ -449,9 +449,9 @@ otherwise the standard mapping above.
 
 .. code-block:: text
 
-    accession,sample_type,name,organism
-    ERR1160845,RNA-Seq,liver_r1,Hs
-    ERR10677146,RNA-Seq,,
+    accession,sample_type,name,organism,project
+    ERR1160845,RNA-Seq,liver_r1,Hs,proj_123
+    ERR10677146,RNA-Seq,,,
 
 .. code-block:: bash
 
