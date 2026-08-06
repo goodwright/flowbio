@@ -926,7 +926,7 @@ class TestSamplesUploadBatch:
         assert "CSV" in result.stderr
 
 
-IMPORT_HEADERS = ["accession", "name", "organism", "sample_type", "cell_type", "source", "source__annotation"]
+IMPORT_HEADERS = ["accession", "name", "organism", "project", "pubmed", "sample_type", "cell_type", "source", "source__annotation"]
 
 
 def _write_import_sheet(directory: Path, *records: dict[str, str]) -> Path:
@@ -1051,7 +1051,7 @@ class TestSamplesImport:
         ]
 
     @respx.mock
-    def test_sends_name_organism_and_metadata_in_payload(
+    def test_sends_optional_columns_in_payload(
         self, run_cli, tmp_path: Path,
     ) -> None:
         route = respx.post(SAMPLE_IMPORTS_URL).mock(
@@ -1060,7 +1060,7 @@ class TestSamplesImport:
             )),
         )
         sheet = _write_import_sheet(tmp_path, _import_record(
-            name="liver_r1", organism="Hs", cell_type="Neuron",
+            name="liver_r1", organism="Hs", project="proj_1", pubmed="12345678", cell_type="Neuron",
         ))
 
         run_cli(
@@ -1074,8 +1074,32 @@ class TestSamplesImport:
                 "sample_type": "rna_seq",
                 "name": "liver_r1",
                 "organism": "Hs",
+                "project": "proj_1",
+                "pubmed": "12345678",
                 "metadata": {"cell_type": "Neuron"},
             }],
+        }
+
+    @respx.mock
+    def test_blank_optional_columns_are_omitted_from_payload(
+        self, run_cli, tmp_path: Path,
+    ) -> None:
+        route = respx.post(SAMPLE_IMPORTS_URL).mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json=_job_json(
+                1, "RUNNING", ["ERR1"],
+            )),
+        )
+        sheet = _write_import_sheet(tmp_path, _import_record(
+            name="", organism="", project="", pubmed="",
+        ))
+
+        run_cli(
+            "--token", TOKEN, "samples", "import", "--sheet", str(sheet),
+        )
+
+        payload = json.loads(route.calls[0].request.content)
+        assert payload == {
+            "imports": [{"accession": "ERR1", "sample_type": "rna_seq"}],
         }
 
     @respx.mock
