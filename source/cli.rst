@@ -388,8 +388,9 @@ sample type, so a mixed-type sheet needs no special handling and a
 single-type sheet just repeats the same value down the column.
 
 Every value is sent as-is, with surrounding whitespace trimmed; header
-names are trimmed the same way. The accession format, sample type, and
-metadata rules are all validated **server-side**. This command only
+names are trimmed the same way. The accession format, sample type,
+organism, project, pubmed, and metadata rules are all validated
+**server-side**. This command only
 checks what's structural — anything it can't resolve on your behalf, it
 rejects up front rather than guessing:
 
