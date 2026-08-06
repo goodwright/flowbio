@@ -265,7 +265,7 @@ def _configure_import(import_parser: argparse.ArgumentParser) -> None:
         type=Path,
         help=(
             "CSV accession sheet (required accession/sample_type columns, "
-            "optional name/organism/project, plus metadata columns)."
+            "optional name/organism/project/pubmed, plus metadata columns)."
         ),
     )
 

@@ -7,7 +7,7 @@ from flowbio.cli._accession_sheet import AccessionSheetRow, parse_accession_shee
 from flowbio.cli._exit_codes import CliUsageError
 from flowbio.v2.samples import SampleImportSpec
 
-HEADERS = ["accession", "name", "organism", "project", "sample_type", "cell_type", "source", "source__annotation"]
+HEADERS = ["accession", "name", "organism", "project", "pubmed", "sample_type", "cell_type", "source", "source__annotation"]
 
 
 def _write_sheet(
@@ -44,7 +44,7 @@ class TestParseAccessionSheet:
 
         assert sheet.rows[0].metadata == {"source": "blood"}
 
-    def test_name_organism_and_project_are_optional(self, tmp_path: Path) -> None:
+    def test_name_organism_project_and_pubmed_are_optional(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(
             _write_sheet(tmp_path, _record()),
         )
@@ -52,6 +52,7 @@ class TestParseAccessionSheet:
         assert sheet.rows[0].name is None
         assert sheet.rows[0].organism is None
         assert sheet.rows[0].project is None
+        assert sheet.rows[0].pubmed is None
 
     def test_row_shorter_than_the_header_is_usage_error(
         self, tmp_path: Path,
@@ -64,15 +65,16 @@ class TestParseAccessionSheet:
         ):
             parse_accession_sheet(path)
 
-    def test_name_organism_and_project_are_parsed(self, tmp_path: Path) -> None:
+    def test_name_organism_project_and_pubmed_are_parsed(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(_write_sheet(
             tmp_path,
-            _record(name="liver_r1", organism="Hs", project="proj_1"),
+            _record(name="liver_r1", organism="Hs", project="proj_1", pubmed="12345678"),
         ))
 
         assert sheet.rows[0].name == "liver_r1"
         assert sheet.rows[0].organism == "Hs"
         assert sheet.rows[0].project == "proj_1"
+        assert sheet.rows[0].pubmed == "12345678"
 
     def test_sample_type_is_parsed(self, tmp_path: Path) -> None:
         sheet = parse_accession_sheet(_write_sheet(
@@ -388,6 +390,7 @@ def test_row_rejects_empty_accession_by_construction() -> None:
             name=None,
             organism=None,
             project=None,
+            pubmed=None,
             sample_type="rna_seq",
             metadata={},
         )
@@ -401,6 +404,7 @@ def test_row_rejects_empty_sample_type_by_construction() -> None:
             name=None,
             organism=None,
             project=None,
+            pubmed=None,
             sample_type="",
             metadata={},
         )
@@ -419,9 +423,10 @@ class TestAccessionSheetRowToSpec:
 
         assert spec == SampleImportSpec(accession="ERR1160845", sample_type="chip_seq")
 
-    def test_carries_name_organism_project_and_metadata(self, tmp_path: Path) -> None:
+    def test_carries_name_organism_project_pubmed_and_metadata(self, tmp_path: Path) -> None:
         row = self._row(
-            tmp_path, name="liver_r1", organism="Hs", project="proj_1", cell_type="Neuron",
+            tmp_path, name="liver_r1", organism="Hs", project="proj_1",
+            pubmed="12345678", cell_type="Neuron",
         )
 
         spec = row.to_spec()
@@ -432,6 +437,7 @@ class TestAccessionSheetRowToSpec:
             name="liver_r1",
             organism_id="Hs",
             project_id="proj_1",
+            pubmed="12345678",
             metadata={"cell_type": "Neuron"},
         )
 
