@@ -25,7 +25,7 @@ from pathlib import Path
 
 from flowbio.cli._exit_codes import CliUsageError
 from flowbio.cli._files import existing_file
-from flowbio.v2.samples import SampleImportSpec, SampleTypeId
+from flowbio.v2.samples import PubMedId, SampleImportSpec, SampleTypeId
 
 RESERVED_COLUMNS = ("accession", "name", "organism", "project", "pubmed", "sample_type")
 
@@ -44,7 +44,7 @@ class AccessionSheetRow:
     name: str | None
     organism: str | None
     project: str | None
-    pubmed: str | None
+    pubmed: PubMedId | None
     sample_type: SampleTypeId
     metadata: dict[str, str]
 
@@ -252,7 +252,7 @@ def _build_row(
         name=_cell(record, "name"),
         organism=_cell(record, "organism"),
         project=_cell(record, "project"),
-        pubmed=_cell(record, "pubmed"),
+        pubmed=PubMedId(pubmed) if (pubmed := _cell(record, "pubmed")) else None,
         sample_type=SampleTypeId(sample_type),
         metadata=metadata,
     )
