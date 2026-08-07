@@ -17,11 +17,20 @@ class FlowApiError(Exception):
     :param status_code: The HTTP status code from the response.
     :param message: The error message — either a string or a dict of
         field-level errors (e.g. ``{"field": ["error message"]}``).
+    :param details: Optional per-field problems from the server's error
+        envelope, each a ``{"field", "code", "message"}`` dict. Set when the
+        response carries the structured ``details`` list; ``None`` otherwise.
     """
 
-    def __init__(self, status_code: int, message: str | dict[str, list[str]]) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        message: str | dict[str, list[str]],
+        details: list[dict] | None = None,
+    ) -> None:
         self.status_code = status_code
         self.message = message
+        self.details = details
         super().__init__(str(message))
 
 

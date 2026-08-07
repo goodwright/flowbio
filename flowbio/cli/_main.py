@@ -89,7 +89,7 @@ def _dispatch(args: argparse.Namespace) -> int:
         output.emit_error(str(error))
         return int(ExitCode.USAGE)
     except FlowApiError as error:
-        details = error.errors if isinstance(error, AnnotationValidationError) else None
+        details = error.errors if isinstance(error, AnnotationValidationError) else error.details
         output.emit_error(
             error.message, status_code=error.status_code, details=details,
         )

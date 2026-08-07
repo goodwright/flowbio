@@ -1151,10 +1151,17 @@ class TestSamplesImport:
     def test_api_rejection_propagates_as_error(
         self, run_cli, tmp_path: Path,
     ) -> None:
+        detail_message = "Sample type 'bogus' does not exist"
         route = respx.post(SAMPLE_IMPORTS_URL).mock(
             return_value=httpx.Response(
                 HTTPStatus.UNPROCESSABLE_ENTITY,
-                json={"error": "sample type 'bogus' does not exist"},
+                json={"error": {
+                    "code": "validation_error",
+                    "message": "Invalid sample import request",
+                    "details": [
+                        {"field": "0.sample_type", "code": "invalid", "message": detail_message},
+                    ],
+                }},
             ),
         )
         sheet = _write_import_sheet(tmp_path, _import_record(sample_type="bogus"))
@@ -1165,7 +1172,9 @@ class TestSamplesImport:
 
         assert result.exit_code == 1
         assert route.call_count == 1
-        assert "bogus" in result.stderr
+        assert "Invalid sample import request" in result.stderr
+        assert f"0.sample_type: {detail_message}" in result.stderr
+        assert "{'" not in result.stderr
 
     @respx.mock
     def test_non_csv_sheet_is_usage_error(self, run_cli, tmp_path: Path) -> None:
@@ -1616,9 +1625,11 @@ class TestSamplesImportStatus:
 
     @respx.mock
     def test_unknown_job_id_is_not_found(self, run_cli) -> None:
+        not_found_message = "sample import 999 does not exist"
         respx.get(f"{SAMPLE_IMPORTS_URL}/999").mock(
             return_value=httpx.Response(
-                HTTPStatus.NOT_FOUND, json={"error": "sample import 999 does not exist"},
+                HTTPStatus.NOT_FOUND,
+                json={"error": {"code": "not_found", "message": not_found_message, "details": []}},
             ),
         )
 
@@ -1627,6 +1638,8 @@ class TestSamplesImportStatus:
         )
 
         assert result.exit_code == 4
+        assert not_found_message in result.stderr
+        assert "{'" not in result.stderr
 
     def test_missing_job_id_is_usage_error(self, run_cli) -> None:
         result = run_cli("--token", TOKEN, "samples", "import-status")

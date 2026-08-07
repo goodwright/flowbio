@@ -78,6 +78,7 @@ class HttpTransport:
         if response.is_success:
             return
 
+        details: list[dict] | None = None
         try:
             body = response.json()
         except ValueError:
@@ -85,11 +86,22 @@ class HttpTransport:
             # HTML/plain-text on 5xx instead of the API's JSON envelope.
             message = self._non_json_error_message(response)
         else:
-            message = body.get("error", body)
+            message, details = self._unpack_error_body(body)
         exception_class = self._STATUS_TO_EXCEPTION.get(
             response.status_code, FlowApiError,
         )
-        raise exception_class(response.status_code, message)
+        raise exception_class(response.status_code, message, details)
+
+    @staticmethod
+    def _unpack_error_body(body: dict) -> tuple[str | dict, list[dict] | None]:
+        error = body.get("error", body)
+        # The v2 API wraps errors in a {code, message, details} envelope; older
+        # endpoints put a bare string (or their own dict) under "error". Unwrap
+        # the envelope to its human message and per-field details, and leave any
+        # other shape untouched.
+        if isinstance(error, dict) and "message" in error:
+            return error["message"], error.get("details") or None
+        return error, None
 
     @staticmethod
     def _non_json_error_message(response: httpx.Response) -> str:
