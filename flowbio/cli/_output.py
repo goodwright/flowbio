@@ -94,13 +94,20 @@ class Output:
 
 
 def format_issue(issue: JsonValue) -> str:
-    """Render a Flow ``{row, message}`` issue dict as a readable line.
+    """Render a Flow issue dict as a readable line.
 
-    Falls back to ``str`` for any other shape so unexpected payloads still
-    surface intact.
+    Handles both the annotation ``{row, message}`` shape and the API error
+    envelope's ``{field, code, message}`` detail shape, prefixing with whichever
+    locator is present. Falls back to ``str`` for any other shape so unexpected
+    payloads still surface intact.
     """
     if isinstance(issue, dict) and "message" in issue:
         row = issue.get("row")
-        prefix = f"row {row}: " if row is not None else ""
+        if row is not None:
+            prefix = f"row {row}: "
+        elif issue.get("field") is not None:
+            prefix = f"{issue['field']}: "
+        else:
+            prefix = ""
         return f"{prefix}{issue['message']}"
     return str(issue)
