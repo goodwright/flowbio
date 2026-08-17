@@ -147,9 +147,10 @@ class MultiplexedUpload(BaseModel, frozen=True):
     )
 
 
-SampleImportJobId = NewType("SampleImportJobId", int)
+SampleImportJobId = NewType("SampleImportJobId", str)
 """The identifier of a sample-import job, as returned by
-:meth:`SampleResource.import_samples`."""
+:meth:`SampleResource.import_samples`. A bare integer written as a string —
+the API serialises record ids as strings so browsers do not round them."""
 
 
 SampleImportStatus = Literal["RUNNING", "COMPLETED", "FAILED"]
@@ -217,11 +218,11 @@ class SampleImportJob(BaseModel, frozen=True):
     accessions: list[str] = Field(
         default_factory=list, description="The accessions submitted with this job, in submission order.",
     )
-    sample_ids: list[int] = Field(
+    sample_ids: list[str] = Field(
         default_factory=list,
         description="The created samples' ids, corresponding to ``accessions`` once the job has completed.",
     )
-    execution_id: int | None = Field(
+    execution_id: str | None = Field(
         default=None, description="The pipeline execution backing this job, if one was created.",
     )
     error: str | None = Field(

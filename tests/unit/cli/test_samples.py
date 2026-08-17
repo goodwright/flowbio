@@ -953,14 +953,14 @@ def _job_json(
     execution_id: int | None = 7,
 ) -> dict:
     return {
-        "id": job_id,
+        "id": str(job_id),
         "status": status,
         "created": 1700000000,
         "started": 1700000001 if status != "RUNNING" else None,
         "finished": 1700000002 if status in ("COMPLETED", "FAILED") else None,
         "accessions": accessions,
-        "sample_ids": sample_ids or [],
-        "execution_id": execution_id,
+        "sample_ids": [str(sample_id) for sample_id in sample_ids or []],
+        "execution_id": None if execution_id is None else str(execution_id),
         "error": error,
     }
 
@@ -1010,14 +1010,14 @@ class TestSamplesImport:
         document = json.loads(result.stdout)
         assert result.stdout.count("\n") == 1
         assert document == {
-            "id": 42,
+            "id": "42",
             "status": "RUNNING",
             "created": "2023-11-14T22:13:20Z",
             "started": None,
             "finished": None,
             "accessions": ["ERR1"],
             "sample_ids": [],
-            "execution_id": 7,
+            "execution_id": "7",
             "error": None,
         }
 
@@ -1391,7 +1391,7 @@ class TestSamplesImportStatus:
     def test_running_job_with_started_reports_when_it_started(self, run_cli) -> None:
         respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": 42, "status": "RUNNING", "created": 1700000000,
+                "id": "42", "status": "RUNNING", "created": 1700000000,
                 "started": 1700000001, "finished": None,
                 "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
             }),
@@ -1408,7 +1408,7 @@ class TestSamplesImportStatus:
     def test_started_with_non_utc_offset_is_reported_in_utc(self, run_cli) -> None:
         respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": 42, "status": "RUNNING", "created": 1700000000,
+                "id": "42", "status": "RUNNING", "created": 1700000000,
                 "started": "2024-04-05T19:34:38+02:00", "finished": None,
                 "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
             }),
@@ -1425,7 +1425,7 @@ class TestSamplesImportStatus:
     def test_started_with_no_offset_is_treated_as_utc(self, run_cli) -> None:
         respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": 42, "status": "RUNNING", "created": 1700000000,
+                "id": "42", "status": "RUNNING", "created": 1700000000,
                 "started": "2024-04-05T19:34:38", "finished": None,
                 "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
             }),
@@ -1442,7 +1442,7 @@ class TestSamplesImportStatus:
     def test_naive_started_is_reported_as_utc_in_json_too(self, run_cli) -> None:
         respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": 42, "status": "RUNNING", "created": 1700000000,
+                "id": "42", "status": "RUNNING", "created": 1700000000,
                 "started": "2024-04-05T19:34:38", "finished": None,
                 "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
             }),
@@ -1460,7 +1460,7 @@ class TestSamplesImportStatus:
     def test_non_utc_offset_started_is_reported_as_utc_in_json_too(self, run_cli) -> None:
         respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": 42, "status": "RUNNING", "created": 1700000000,
+                "id": "42", "status": "RUNNING", "created": 1700000000,
                 "started": "2024-04-05T19:34:38+02:00", "finished": None,
                 "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
             }),
@@ -1478,7 +1478,7 @@ class TestSamplesImportStatus:
     def test_running_job_falls_back_to_created_when_not_started(self, run_cli) -> None:
         respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": 42, "status": "RUNNING", "created": 1700000000,
+                "id": "42", "status": "RUNNING", "created": 1700000000,
                 "started": None, "finished": None,
                 "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
             }),
@@ -1596,14 +1596,14 @@ class TestSamplesImportStatus:
         document = json.loads(result.stdout)
         assert result.stdout.count("\n") == 1
         assert document == {
-            "id": 42,
+            "id": "42",
             "status": "COMPLETED",
             "created": "2023-11-14T22:13:20Z",
             "started": "2023-11-14T22:13:21Z",
             "finished": "2023-11-14T22:13:22Z",
             "accessions": ["ERR1"],
-            "sample_ids": [101],
-            "execution_id": 7,
+            "sample_ids": ["101"],
+            "execution_id": "7",
             "error": None,
         }
 
