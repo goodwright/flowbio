@@ -273,7 +273,7 @@ def _configure_import(import_parser: argparse.ArgumentParser) -> None:
 def _job_id(value: str) -> SampleImportJobId:
     # Ids are strings on the wire but always digits; a non-numeric one would
     # fail deep inside the server's query building rather than at the boundary.
-    if not value.isdigit():
+    if not (value.isascii() and value.isdigit()):
         raise argparse.ArgumentTypeError(f"job id must be an integer, got {value!r}")
     return SampleImportJobId(value)
 

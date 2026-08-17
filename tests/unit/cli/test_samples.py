@@ -1565,6 +1565,15 @@ class TestSamplesImportStatus:
         assert "_job_id" not in result.stderr
         assert "job id" in result.stderr.lower()
 
+    def test_non_ascii_digit_job_id_reports_clear_message(self, run_cli) -> None:
+        result = run_cli(
+            "--token", TOKEN, "samples", "import-status", "--job-id", "٤٢",
+        )
+
+        assert result.exit_code == 2
+        assert "_job_id" not in result.stderr
+        assert "job id" in result.stderr.lower()
+
     @respx.mock
     def test_completed_job_with_no_sample_ids_reports_none(self, run_cli) -> None:
         respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
