@@ -460,7 +460,7 @@ otherwise the standard mapping above.
     Started import job 42 for 2 accession(s) (status: RUNNING). Check progress with 'flowbio samples import-status --job-id 42'.
 
     $ flowbio samples import --sheet ./accessions.csv --json
-    {"id": 42, "status": "RUNNING", "created": "2024-04-05T19:34:38Z", "started": null, "finished": null, "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [], "execution_id": null, "error": null}
+    {"id": "42", "status": "RUNNING", "created": "2024-04-05T19:34:38Z", "started": null, "finished": null, "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [], "execution_id": null, "error": null}
 
 ``samples import-status``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -517,7 +517,7 @@ mapping above.
     Job 42: COMPLETED (finished 2024-04-05 19:38:20 UTC). Sample ids: 101, 102.
 
     $ flowbio samples import-status --job-id 42 --json
-    {"id": 42, "status": "COMPLETED", "created": "2024-04-05T19:34:38Z", "started": "2024-04-05T19:34:40Z", "finished": "2024-04-05T19:38:20Z", "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": [101, 102], "execution_id": 7, "error": null}
+    {"id": "42", "status": "COMPLETED", "created": "2024-04-05T19:34:38Z", "started": "2024-04-05T19:34:40Z", "finished": "2024-04-05T19:38:20Z", "accessions": ["ERR1160845", "ERR10677146"], "sample_ids": ["101", "102"], "execution_id": "7", "error": null}
 
 ``api get``
 ~~~~~~~~~~~

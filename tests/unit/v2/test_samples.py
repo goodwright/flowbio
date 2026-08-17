@@ -1063,7 +1063,7 @@ class TestImportSamples:
     def test_posts_imports_and_parses_job(self) -> None:
         route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json={
-                "id": 42,
+                "id": "42",
                 "status": "RUNNING",
                 "created": 1700000000,
                 "started": None,
@@ -1081,7 +1081,7 @@ class TestImportSamples:
         ])
 
         assert result == SampleImportJob(
-            id=SampleImportJobId(42),
+            id=SampleImportJobId("42"),
             status="RUNNING",
             created=1700000000,
             started=None,
@@ -1097,7 +1097,7 @@ class TestImportSamples:
     def test_sends_accession_and_sample_type(self) -> None:
         route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json={
-                "id": 1, "status": "RUNNING", "created": 1700000000, "accessions": ["ERR1"],
+                "id": "1", "status": "RUNNING", "created": 1700000000, "accessions": ["ERR1"],
                 "sample_ids": [], "execution_id": None, "error": None,
             }),
         )
@@ -1116,7 +1116,7 @@ class TestImportSamples:
     def test_sends_optional_fields_when_present(self) -> None:
         route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json={
-                "id": 1, "status": "RUNNING", "created": 1700000000, "accessions": ["ERR1"],
+                "id": "1", "status": "RUNNING", "created": 1700000000, "accessions": ["ERR1"],
                 "sample_ids": [], "execution_id": None, "error": None,
             }),
         )
@@ -1151,7 +1151,7 @@ class TestImportSamples:
     def test_empty_string_optional_fields_are_omitted_not_the_required_ones(self) -> None:
         route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json={
-                "id": 1, "status": "RUNNING", "created": 1700000000, "accessions": ["ERR1"],
+                "id": "1", "status": "RUNNING", "created": 1700000000, "accessions": ["ERR1"],
                 "sample_ids": [], "execution_id": None, "error": None,
             }),
         )
@@ -1172,7 +1172,7 @@ class TestImportSamples:
     def test_sends_multiple_imports_in_one_request(self) -> None:
         route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
             return_value=httpx.Response(HTTPStatus.CREATED, json={
-                "id": 1, "status": "RUNNING", "created": 1700000000, "accessions": ["ERR1", "ERR2"],
+                "id": "1", "status": "RUNNING", "created": 1700000000, "accessions": ["ERR1", "ERR2"],
                 "sample_ids": [], "execution_id": None, "error": None,
             }),
         )
@@ -1210,30 +1210,30 @@ class TestGetImport:
     def test_parses_completed_job(self) -> None:
         respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": 42,
+                "id": "42",
                 "status": "COMPLETED",
                 "created": 1700000000,
                 "started": 1700000001,
                 "finished": 1700000002,
                 "accessions": ["ERR1160845", "ERR10677146"],
-                "sample_ids": [101, 102],
-                "execution_id": 7,
+                "sample_ids": ["101", "102"],
+                "execution_id": "7",
                 "error": None,
             }),
         )
 
         client = Client()
-        result = client.samples.get_import(SampleImportJobId(42))
+        result = client.samples.get_import(SampleImportJobId("42"))
 
         assert result == SampleImportJob(
-            id=SampleImportJobId(42),
+            id=SampleImportJobId("42"),
             status="COMPLETED",
             created=1700000000,
             started=1700000001,
             finished=1700000002,
             accessions=["ERR1160845", "ERR10677146"],
-            sample_ids=[101, 102],
-            execution_id=7,
+            sample_ids=["101", "102"],
+            execution_id="7",
             error=None,
         )
 
@@ -1241,20 +1241,20 @@ class TestGetImport:
     def test_parses_failed_job_with_error(self) -> None:
         respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": 42,
+                "id": "42",
                 "status": "FAILED",
                 "created": 1700000000,
                 "started": 1700000001,
                 "finished": 1700000002,
                 "accessions": ["ERR1160845"],
                 "sample_ids": [],
-                "execution_id": 7,
+                "execution_id": "7",
                 "error": "download failed: connection reset",
             }),
         )
 
         client = Client()
-        result = client.samples.get_import(SampleImportJobId(42))
+        result = client.samples.get_import(SampleImportJobId("42"))
 
         assert result.status == "FAILED"
         assert result.error == "download failed: connection reset"
@@ -1270,19 +1270,19 @@ class TestGetImport:
         client = Client()
 
         with pytest.raises(NotFoundError):
-            client.samples.get_import(SampleImportJobId(999))
+            client.samples.get_import(SampleImportJobId("999"))
 
     @respx.mock
     def test_parses_job_with_only_id_and_status(self) -> None:
         respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": 42,
+                "id": "42",
                 "status": "RUNNING",
             }),
         )
 
         client = Client()
-        result = client.samples.get_import(SampleImportJobId(42))
+        result = client.samples.get_import(SampleImportJobId("42"))
 
         assert result.created is None
         assert result.started is None
@@ -1296,13 +1296,13 @@ class TestGetImport:
     def test_naive_timestamp_is_treated_as_utc(self) -> None:
         respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": 42,
+                "id": "42",
                 "status": "RUNNING",
                 "started": "2024-04-05T19:34:38",
             }),
         )
 
         client = Client()
-        result = client.samples.get_import(SampleImportJobId(42))
+        result = client.samples.get_import(SampleImportJobId("42"))
 
         assert result.started == datetime(2024, 4, 5, 19, 34, 38, tzinfo=timezone.utc)
