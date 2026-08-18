@@ -667,7 +667,7 @@ def _import_status_command(
 
 def _job_summary(job: SampleImportJob) -> str:
     if job.status == "COMPLETED":
-        ids = ", ".join(str(sample_id) for sample_id in job.sample_ids) or "none"
+        ids = ", ".join(job.sample_ids) or "none"
         suffix = _timestamp_suffix("finished", job.finished)
         return f"Job {job.id}: COMPLETED{suffix}. Sample ids: {ids}."
     if job.status == "FAILED":
