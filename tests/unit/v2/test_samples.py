@@ -1273,6 +1273,33 @@ class TestGetImport:
             client.samples.get_import(SampleImportJobId("999"))
 
     @respx.mock
+    def test_parses_a_job_from_a_server_that_still_sends_integer_ids(self) -> None:
+        # An on-prem install between client and server upgrades is a normal
+        # state; pydantic does not coerce int -> str in lax mode by default,
+        # so a server that hasn't shipped string ids yet would otherwise
+        # raise ValidationError on every import/import-status call.
+        respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json={
+                "id": 42,
+                "status": "COMPLETED",
+                "created": 1700000000,
+                "started": 1700000001,
+                "finished": 1700000002,
+                "accessions": ["ERR1160845"],
+                "sample_ids": [845739323725217744],
+                "execution_id": 7,
+                "error": None,
+            }),
+        )
+
+        client = Client()
+        result = client.samples.get_import(SampleImportJobId("42"))
+
+        assert result.id == "42"
+        assert result.sample_ids == ["845739323725217744"]
+        assert result.execution_id == "7"
+
+    @respx.mock
     def test_parses_job_with_only_id_and_status(self) -> None:
         respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
