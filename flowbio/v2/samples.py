@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NewType
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from flowbio.v2._pagination import PageIterator
 from flowbio.v2.exceptions import (
@@ -199,7 +199,7 @@ class SampleImportSpec:
     metadata: dict[str, str] | None = None
 
 
-class SampleImportJob(BaseModel, frozen=True):
+class SampleImportJob(BaseModel):
     """A batch job that imports one or more accessions into samples.
 
     All accessions submitted in one :meth:`SampleResource.import_samples` call
@@ -207,6 +207,12 @@ class SampleImportJob(BaseModel, frozen=True):
     ``accessions``/``sample_ids`` correspond positionally once ``status`` is
     ``"COMPLETED"``.
     """
+
+    # coerce_numbers_to_str: a server that hasn't shipped string ids yet
+    # (an on-prem install caught between upgrades) sends these as integers,
+    # and pydantic does not coerce int -> str in lax mode by default. Python
+    # ints are unbounded, so accepting one here loses no precision.
+    model_config = ConfigDict(frozen=True, coerce_numbers_to_str=True)
 
     id: SampleImportJobId = Field(description="Unique identifier for this import job.")
     status: SampleImportStatus = Field(description="The job's current lifecycle state.")
