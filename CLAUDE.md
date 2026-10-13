@@ -12,7 +12,10 @@ Use strict, explicit typing.
   and `pathlib.Path` for filesystem paths, over a bare `str`.
 - Avoid `object` in signatures — type the actual shape (e.g. a `JsonValue`
   alias for JSON-serialisable values).
-- Returned values are frozen Pydantic models; inputs are plain dicts.
+- Structured data crossing a function boundary is a Pydantic model, never a
+  plain dict — inputs as well as returned values (which are frozen) — so a
+  value's invariants are enforced where it is built and nothing downstream has
+  to re-check them.
 
 ## Testing
 
