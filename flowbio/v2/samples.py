@@ -28,11 +28,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NewType
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from flowbio.v2._pagination import PageIterator
 from flowbio.v2.exceptions import (
@@ -216,9 +215,9 @@ class SampleImportJob(BaseModel):
 
     id: SampleImportJobId = Field(description="Unique identifier for this import job.")
     status: SampleImportStatus = Field(description="The job's current lifecycle state.")
-    created: datetime | None = Field(default=None, description="When the job was created.")
-    started: datetime | None = Field(default=None, description="When the job started running, if it has.")
-    finished: datetime | None = Field(
+    created: AwareDatetime | None = Field(default=None, description="When the job was created.")
+    started: AwareDatetime | None = Field(default=None, description="When the job started running, if it has.")
+    finished: AwareDatetime | None = Field(
         default=None, description="When the job finished (completed or failed), if it has.",
     )
     accessions: list[str] = Field(
@@ -234,19 +233,6 @@ class SampleImportJob(BaseModel):
     error: str | None = Field(
         default=None, description='The failure reason, set only when status is "FAILED".',
     )
-
-    @field_validator("created", "started", "finished", mode="after")
-    @classmethod
-    def _normalize_to_utc(cls, value: datetime | None) -> datetime | None:
-        if value is None:
-            return None
-        # A naive value (no tzinfo) is treated as already UTC, matching what
-        # the server always means by these timestamps, rather than left
-        # ambiguous for every consumer (CLI, --json, library) to decide on
-        # its own.
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
 
 
 class SampleResource:

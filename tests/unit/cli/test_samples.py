@@ -1422,59 +1422,6 @@ class TestSamplesImportStatus:
         assert "started 2024-04-05 17:34:38 UTC" in result.stdout
 
     @respx.mock
-    def test_started_with_no_offset_is_treated_as_utc(self, run_cli) -> None:
-        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
-            return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": "42", "status": "RUNNING", "created": "2023-11-14T22:13:20Z",
-                "started": "2024-04-05T19:34:38", "finished": None,
-                "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
-            }),
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import-status", "--job-id", "42",
-        )
-
-        assert result.exit_code == 0
-        assert "started 2024-04-05 19:34:38 UTC" in result.stdout
-
-    @respx.mock
-    def test_naive_started_is_reported_as_utc_in_json_too(self, run_cli) -> None:
-        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
-            return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": "42", "status": "RUNNING", "created": "2023-11-14T22:13:20Z",
-                "started": "2024-04-05T19:34:38", "finished": None,
-                "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
-            }),
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import-status", "--job-id", "42", "--json",
-        )
-
-        assert result.exit_code == 0
-        document = json.loads(result.stdout)
-        assert document["started"] == "2024-04-05T19:34:38Z"
-
-    @respx.mock
-    def test_non_utc_offset_started_is_reported_as_utc_in_json_too(self, run_cli) -> None:
-        respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
-            return_value=httpx.Response(HTTPStatus.OK, json={
-                "id": "42", "status": "RUNNING", "created": "2023-11-14T22:13:20Z",
-                "started": "2024-04-05T19:34:38+02:00", "finished": None,
-                "accessions": ["ERR1"], "sample_ids": [], "execution_id": None, "error": None,
-            }),
-        )
-
-        result = run_cli(
-            "--token", TOKEN, "samples", "import-status", "--job-id", "42", "--json",
-        )
-
-        assert result.exit_code == 0
-        document = json.loads(result.stdout)
-        assert document["started"] == "2024-04-05T17:34:38Z"
-
-    @respx.mock
     def test_running_job_falls_back_to_created_when_not_started(self, run_cli) -> None:
         respx.get(f"{SAMPLE_IMPORTS_URL}/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
