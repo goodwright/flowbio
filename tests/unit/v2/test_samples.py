@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import ANY, patch
 
 import httpx
+from pydantic import ValidationError
 import pytest
 import respx
 
@@ -1320,7 +1321,7 @@ class TestGetImport:
         assert result.error is None
 
     @respx.mock
-    def test_naive_timestamp_is_treated_as_utc(self) -> None:
+    def test_timestamp_without_offset_is_rejected(self) -> None:
         respx.get(f"{DEFAULT_BASE_URL}/v2/sample-imports/42").mock(
             return_value=httpx.Response(HTTPStatus.OK, json={
                 "id": "42",
@@ -1330,6 +1331,6 @@ class TestGetImport:
         )
 
         client = Client()
-        result = client.samples.get_import(SampleImportJobId("42"))
 
-        assert result.started == datetime(2024, 4, 5, 19, 34, 38, tzinfo=timezone.utc)
+        with pytest.raises(ValidationError):
+            client.samples.get_import(SampleImportJobId("42"))
