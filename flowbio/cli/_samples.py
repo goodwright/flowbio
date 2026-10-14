@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -681,7 +681,7 @@ def _job_summary(job: SampleImportJob) -> str:
 def _timestamp_suffix(label: str, timestamp: datetime | None) -> str:
     if timestamp is None:
         return ""
-    return f" ({label} {timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')})"
+    return f" ({label} {timestamp.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')})"
 
 
 def _merge_metadata(
