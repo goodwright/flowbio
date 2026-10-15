@@ -7,7 +7,7 @@ import httpx
 import respx
 
 from tests.unit.cli.conftest import DEFAULT_BASE_URL
-from tests.unit.v2.conftest import parse_multipart
+from tests.unit.v2.conftest import parse_multipart, problem_response
 
 SAMPLE_UPLOAD_URL = f"{DEFAULT_BASE_URL}/upload/sample"
 ANNOTATION_TEMPLATE_URL = f"{DEFAULT_BASE_URL}/annotation"
@@ -1153,15 +1153,13 @@ class TestSamplesImport:
     ) -> None:
         detail_message = "Sample type 'bogus' does not exist"
         route = respx.post(SAMPLE_IMPORTS_URL).mock(
-            return_value=httpx.Response(
+            return_value=problem_response(
                 HTTPStatus.UNPROCESSABLE_ENTITY,
-                json={"error": {
-                    "code": "validation_error",
-                    "message": "Invalid sample import request",
-                    "details": [
-                        {"field": "0.sample_type", "code": "invalid", "message": detail_message},
-                    ],
-                }},
+                code="validation_error",
+                detail="Invalid sample import request",
+                errors=[
+                    {"pointer": "/imports/0/sample_type", "code": "invalid", "detail": detail_message},
+                ],
             ),
         )
         sheet = _write_import_sheet(tmp_path, _import_record(sample_type="bogus"))
@@ -1173,7 +1171,7 @@ class TestSamplesImport:
         assert result.exit_code == 1
         assert route.call_count == 1
         assert "Invalid sample import request" in result.stderr
-        assert f"0.sample_type: {detail_message}" in result.stderr
+        assert f"/imports/0/sample_type: {detail_message}" in result.stderr
         assert "{'" not in result.stderr
 
     @respx.mock
@@ -1583,9 +1581,8 @@ class TestSamplesImportStatus:
     def test_unknown_job_id_is_not_found(self, run_cli) -> None:
         not_found_message = "sample import 999 does not exist"
         respx.get(f"{SAMPLE_IMPORTS_URL}/999").mock(
-            return_value=httpx.Response(
-                HTTPStatus.NOT_FOUND,
-                json={"error": {"code": "not_found", "message": not_found_message, "details": []}},
+            return_value=problem_response(
+                HTTPStatus.NOT_FOUND, code="not_found", detail=not_found_message,
             ),
         )
 

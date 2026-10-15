@@ -200,3 +200,19 @@ class TestFormatIssue:
         issue = {"code": "E123"}
 
         assert format_issue(issue) == str(issue)
+
+    def test_formats_legacy_field_and_message(self) -> None:
+        assert format_issue({"field": "page", "code": "invalid", "message": "bad"}) == "page: bad"
+
+    def test_formats_problem_pointer_and_detail(self) -> None:
+        issue = {"pointer": "/imports/0/accession", "code": "invalid", "detail": "bad"}
+
+        assert format_issue(issue) == "/imports/0/accession: bad"
+
+    def test_formats_problem_parameter_and_detail(self) -> None:
+        issue = {"parameter": "page", "code": "greater_than_equal", "detail": "bad"}
+
+        assert format_issue(issue) == "page: bad"
+
+    def test_problem_entry_without_location_has_no_prefix(self) -> None:
+        assert format_issue({"code": "invalid", "detail": "bad"}) == "bad"

@@ -16,7 +16,7 @@ from flowbio.v2.exceptions import (
     NotFoundError,
 )
 
-from tests.unit.v2.conftest import DEFAULT_BASE_URL
+from tests.unit.v2.conftest import DEFAULT_BASE_URL, problem_response
 
 
 class TestTransportConnectionRetries:
@@ -343,6 +343,137 @@ class TestTransportErrorBodyPreservation:
             transport.post("/upload/annotation", data={})
 
         assert exc_info.value.message == body
+
+
+class TestTransportProblemDetails:
+
+    @respx.mock
+    def test_reads_message_code_and_details_from_problem(self) -> None:
+        detail = "Invalid sample import request"
+        code = "validation_error"
+        errors = [
+            {"pointer": "/imports/0/accession", "code": "invalid", "detail": "bad accession"},
+            {"parameter": "page", "code": "greater_than_equal", "detail": "too small"},
+        ]
+        respx.post(f"{DEFAULT_BASE_URL}/samples/imports").mock(
+            return_value=problem_response(
+                HTTPStatus.UNPROCESSABLE_ENTITY, code, detail, errors,
+            ),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(FlowApiError) as exc_info:
+            transport.post("/samples/imports", json={})
+
+        assert exc_info.value.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+        assert exc_info.value.message == detail
+        assert exc_info.value.code == code
+        assert exc_info.value.details == errors
+
+    @respx.mock
+    def test_problem_with_no_errors_has_no_details(self) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/samples/imports/999").mock(
+            return_value=problem_response(
+                HTTPStatus.NOT_FOUND, "not_found", "sample import 999 does not exist",
+            ),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(NotFoundError) as exc_info:
+            transport.get("/samples/imports/999")
+
+        assert exc_info.value.details is None
+
+    @respx.mock
+    def test_401_problem_raises_authentication_error(self) -> None:
+        detail = "Token has expired"
+        code = "unauthenticated"
+        respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            return_value=problem_response(HTTPStatus.UNAUTHORIZED, code, detail),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(AuthenticationError) as exc_info:
+            transport.get("/me")
+
+        assert exc_info.value.message == detail
+        assert exc_info.value.code == code
+
+    @respx.mock
+    def test_problem_without_flow_members_falls_back_to_title(self) -> None:
+        title = "Service Unavailable"
+        respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            return_value=httpx.Response(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                headers={"Content-Type": "application/problem+json"},
+                json={"type": "about:blank", "title": title, "status": 503},
+            ),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(FlowApiError) as exc_info:
+            transport.get("/me")
+
+        assert exc_info.value.status_code == HTTPStatus.SERVICE_UNAVAILABLE
+        assert exc_info.value.message == title
+        assert exc_info.value.code is None
+        assert exc_info.value.details is None
+
+    @respx.mock
+    def test_problem_without_detail_or_title_keeps_body_as_message(self) -> None:
+        body = {"status": 502}
+        respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            return_value=httpx.Response(
+                HTTPStatus.BAD_GATEWAY,
+                headers={"Content-Type": "application/problem+json"},
+                json=body,
+            ),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(FlowApiError) as exc_info:
+            transport.get("/me")
+
+        assert exc_info.value.message == body
+
+    @respx.mock
+    def test_json_body_with_problem_members_is_not_read_as_problem(self) -> None:
+        body = {"detail": "looks like a problem", "code": "validation_error"}
+        respx.get(f"{DEFAULT_BASE_URL}/legacy").mock(
+            return_value=httpx.Response(HTTPStatus.BAD_REQUEST, json=body),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(BadRequestError) as exc_info:
+            transport.get("/legacy")
+
+        assert exc_info.value.message == body
+        assert exc_info.value.code is None
+
+    @respx.mock
+    def test_legacy_envelope_is_unwrapped_to_message_and_details(self) -> None:
+        message = "Invalid page"
+        details = [{"field": "page", "code": "invalid", "message": "must be positive"}]
+        respx.get(f"{DEFAULT_BASE_URL}/legacy").mock(
+            return_value=httpx.Response(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                json={"error": {"code": "validation_error", "message": message, "details": details}},
+            ),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(FlowApiError) as exc_info:
+            transport.get("/legacy")
+
+        assert exc_info.value.message == message
+        assert exc_info.value.details == details
 
 
 class TestTransportNonJsonErrorBody:
