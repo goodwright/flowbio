@@ -7,6 +7,7 @@ import respx
 
 from flowbio.cli import _auth
 from tests.unit.cli.conftest import DEFAULT_BASE_URL
+from tests.unit.v2.conftest import problem_response
 
 TOKEN = "test.token"
 
@@ -148,3 +149,22 @@ class TestApiGet:
         document = json.loads(result.stderr)
         assert document["message"] == error_message
         assert document["status_code"] == int(HTTPStatus.NOT_FOUND)
+
+    @respx.mock
+    def test_problem_error_is_nested_in_json_error_document(self, run_cli) -> None:
+        response = problem_response(
+            HTTPStatus.NOT_FOUND, "not_found", "pipeline 999 does not exist",
+        )
+        problem = response.json()
+        respx.get(f"{DEFAULT_BASE_URL}/v2/pipelines/999").mock(return_value=response)
+
+        result = run_cli(
+            "api", "get", "/v2/pipelines/999", "--token", TOKEN, "--json",
+        )
+
+        assert result.exit_code == 4
+        assert json.loads(result.stderr) == {
+            "message": problem["detail"],
+            "status_code": int(HTTPStatus.NOT_FOUND),
+            "problem": problem,
+        }

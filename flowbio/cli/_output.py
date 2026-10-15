@@ -58,6 +58,7 @@ class Output:
         message: JsonValue,
         status_code: int | None = None,
         details: list[JsonValue] | None = None,
+        problem: dict[str, JsonValue] | None = None,
     ) -> None:
         """Emit an error to stderr.
 
@@ -68,6 +69,8 @@ class Output:
         :param details: Per-item detail behind a summary message (e.g. the
             individual annotation validation errors). Listed under ``errors`` in
             ``--json`` mode and one per line in human mode.
+        :param problem: The server's Problem Details body, passed on unparsed
+            under ``problem`` in ``--json`` mode.
         """
         if self.json_mode:
             document: dict[str, JsonValue] = {"message": message}
@@ -75,6 +78,8 @@ class Output:
                 document["status_code"] = int(status_code)
             if details:
                 document["errors"] = details
+            if problem is not None:
+                document["problem"] = problem
             print(json.dumps(document), file=self.stderr)
         else:
             print(f"Error: {message}", file=self.stderr)

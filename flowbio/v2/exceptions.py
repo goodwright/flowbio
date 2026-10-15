@@ -28,6 +28,10 @@ class FlowApiError(Exception):
         for branching on instead of the message text. ``None`` when the
         response is not a problem. Treat an unrecognised code as the generic
         error for its status.
+    :param problem: The Problem Details body exactly as the server sent it,
+        including members this client does not read (``type``, ``title``,
+        ``instance``), so it can be passed on unparsed. ``None`` when the
+        response is not a problem.
 
     Example::
 
@@ -44,11 +48,13 @@ class FlowApiError(Exception):
         message: str | dict[str, list[str]],
         details: list[dict] | None = None,
         code: str | None = None,
+        problem: dict | None = None,
     ) -> None:
         self.status_code = status_code
         self.message = message
         self.details = details
         self.code = code
+        self.problem = problem
         super().__init__(str(message))
 
 

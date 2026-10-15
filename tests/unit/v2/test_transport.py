@@ -372,6 +372,21 @@ class TestTransportProblemDetails:
         assert exc_info.value.details == errors
 
     @respx.mock
+    def test_keeps_problem_body_as_sent(self) -> None:
+        response = problem_response(
+            HTTPStatus.INTERNAL_SERVER_ERROR, "internal_error", "Internal error",
+        )
+        problem = response.json()
+        respx.get(f"{DEFAULT_BASE_URL}/me").mock(return_value=response)
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(FlowApiError) as exc_info:
+            transport.get("/me")
+
+        assert exc_info.value.problem == problem
+
+    @respx.mock
     def test_problem_with_no_errors_has_no_details(self) -> None:
         respx.get(f"{DEFAULT_BASE_URL}/samples/imports/999").mock(
             return_value=problem_response(
@@ -455,6 +470,7 @@ class TestTransportProblemDetails:
 
         assert exc_info.value.message == body
         assert exc_info.value.code is None
+        assert exc_info.value.problem is None
 
     @respx.mock
     def test_legacy_envelope_is_unwrapped_to_message_and_details(self) -> None:

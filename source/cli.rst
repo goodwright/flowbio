@@ -62,7 +62,15 @@ Output modes
 
 Under ``--json``, stdout carries a single document and nothing else, so it can
 be piped straight into a parser. On error, a JSON document is written to
-**stderr** carrying ``message`` and, where applicable, a ``status_code``.
+**stderr** carrying ``message`` and, where applicable, a ``status_code``. When
+the server answered with an RFC 9457 Problem Details body, the document also
+carries that body unchanged under ``problem``, so a caller can branch on its
+``code``:
+
+.. code-block:: bash
+
+    $ flowbio --json api get /v2/pipelines/999
+    {"message": "pipeline 999 does not exist", "status_code": 404, "problem": {"type": "https://app.flow.bio/api/v2/reference#not_found", "title": "Not found", "status": 404, "detail": "pipeline 999 does not exist", "code": "not_found", "errors": []}}
 
 Global options are accepted identically before *and* after the verb:
 ``flowbio --json data upload ./counts.tsv`` and
