@@ -79,26 +79,44 @@ class HttpTransport:
             return
 
         details: list[dict] | None = None
+        code: str | None = None
         try:
             body = response.json()
         except ValueError:
             # Upstream proxies (Cloudflare, GCP load balancers, nginx) return
-            # HTML/plain-text on 5xx instead of the API's JSON envelope.
+            # HTML/plain-text on 5xx instead of the API's JSON error body.
             message = self._non_json_error_message(response)
         else:
-            message, details = self._unpack_error_body(body)
+            if self._is_problem(response):
+                message, details, code = self._unpack_problem_body(body)
+            else:
+                message, details = self._unpack_legacy_error_body(body)
         exception_class = self._STATUS_TO_EXCEPTION.get(
             response.status_code, FlowApiError,
         )
-        raise exception_class(response.status_code, message, details)
+        raise exception_class(response.status_code, message, details, code)
 
     @staticmethod
-    def _unpack_error_body(body: dict) -> tuple[str | dict, list[dict] | None]:
+    def _is_problem(response: httpx.Response) -> bool:
+        content_type = response.headers.get("Content-Type", "")
+        return content_type.startswith("application/problem+json")
+
+    @staticmethod
+    def _unpack_problem_body(
+        body: dict,
+    ) -> tuple[str | dict, list[dict] | None, str | None]:
+        # RFC 9457 makes every member optional and `code`/`errors` are Flow's
+        # own, so a gateway's problem body may carry none of them.
+        message = body.get("detail") or body.get("title") or body
+        return message, body.get("errors") or None, body.get("code")
+
+    @staticmethod
+    def _unpack_legacy_error_body(body: dict) -> tuple[str | dict, list[dict] | None]:
         error = body.get("error", body)
-        # The v2 API wraps errors in a {code, message, details} envelope; older
-        # endpoints put a bare string (or their own dict) under "error". Unwrap
-        # the envelope to its human message and per-field details, and leave any
-        # other shape untouched.
+        # Legacy endpoints put either a {code, message, details} envelope or a
+        # bare string (or their own dict) under "error". Unwrap the envelope to
+        # its human message and per-field details, and leave any other shape
+        # untouched.
         if isinstance(error, dict) and "message" in error:
             return error["message"], error.get("details") or None
         return error, None

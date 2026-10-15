@@ -39,6 +39,18 @@ class TestFlowApiError:
 
         assert "username" in str(error)
 
+    def test_stores_code(self) -> None:
+        code = "validation_error"
+
+        error = FlowApiError(422, "Invalid request", code=code)
+
+        assert error.code == code
+
+    def test_code_defaults_to_none(self) -> None:
+        error = FlowApiError(400, "Something went wrong")
+
+        assert error.code is None
+
 
 class TestAuthenticationError:
 

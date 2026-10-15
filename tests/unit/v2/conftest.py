@@ -1,3 +1,5 @@
+from http import HTTPStatus
+
 import httpx
 
 DEFAULT_BASE_URL = "https://app.flow.bio/api"
@@ -31,6 +33,24 @@ def parse_multipart(request: httpx.Request) -> tuple[dict[str, str], dict[str, t
         else:
             fields[name] = body.decode()
     return fields, files
+
+
+def problem_response(
+    status: HTTPStatus, code: str, detail: str, errors: list[dict] | None = None,
+) -> httpx.Response:
+    """Build an RFC 9457 Problem Details response as the v2 API sends one."""
+    return httpx.Response(
+        status,
+        headers={"Content-Type": "application/problem+json"},
+        json={
+            "type": "about:blank",
+            "title": status.phrase,
+            "status": int(status),
+            "detail": detail,
+            "code": code,
+            "errors": errors or [],
+        },
+    )
 
 
 def _disposition_param(disposition: str, key: str) -> str | None:

@@ -17,9 +17,25 @@ class FlowApiError(Exception):
     :param status_code: The HTTP status code from the response.
     :param message: The error message — either a string or a dict of
         field-level errors (e.g. ``{"field": ["error message"]}``).
-    :param details: Optional per-field problems from the server's error
-        envelope, each a ``{"field", "code", "message"}`` dict. Set when the
-        response carries the structured ``details`` list; ``None`` otherwise.
+    :param details: Optional per-location problems behind the error. From a
+        Problem Details body, each is a ``{"pointer" | "parameter", "code",
+        "detail"}`` dict, where ``pointer`` is a JSON Pointer into the request
+        body and ``parameter`` names a query or path parameter. A legacy
+        endpoint's error envelope gives ``{"field", "code", "message"}`` dicts
+        instead. ``None`` when the response names no locations.
+    :param code: The stable machine-readable kind of problem (e.g.
+        ``"validation_error"``, ``"not_found"``) from a Problem Details body,
+        for branching on instead of the message text. ``None`` when the
+        response is not a problem. Treat an unrecognised code as the generic
+        error for its status.
+
+    Example::
+
+        try:
+            client.samples.get("missing")
+        except FlowApiError as error:
+            if error.code == "not_found":
+                ...
     """
 
     def __init__(
@@ -27,10 +43,12 @@ class FlowApiError(Exception):
         status_code: int,
         message: str | dict[str, list[str]],
         details: list[dict] | None = None,
+        code: str | None = None,
     ) -> None:
         self.status_code = status_code
         self.message = message
         self.details = details
+        self.code = code
         super().__init__(str(message))
 
 
