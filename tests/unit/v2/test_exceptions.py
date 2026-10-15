@@ -51,6 +51,18 @@ class TestFlowApiError:
 
         assert error.code is None
 
+    def test_stores_problem(self) -> None:
+        problem = {"title": "Not found", "status": 404, "detail": "gone", "code": "not_found", "errors": []}
+
+        error = FlowApiError(404, "gone", problem=problem)
+
+        assert error.problem == problem
+
+    def test_problem_defaults_to_none(self) -> None:
+        error = FlowApiError(400, "Something went wrong")
+
+        assert error.problem is None
+
 
 class TestAuthenticationError:
 

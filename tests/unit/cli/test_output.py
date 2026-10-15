@@ -107,6 +107,16 @@ class TestHumanOutput:
         assert "row 3: Unknown organism" in lines[2]
         assert out.getvalue() == ""
 
+    def test_error_leaves_problem_body_out_of_human_output(self) -> None:
+        detail = "pipeline 999 does not exist"
+        problem = {"title": "Not found", "status": 404, "detail": detail, "code": "not_found", "errors": []}
+        out, err = io.StringIO(), io.StringIO()
+        output = Output(json_mode=False, stdout=out, stderr=err)
+
+        output.emit_error(detail, status_code=HTTPStatus.NOT_FOUND, problem=problem)
+
+        assert err.getvalue() == f"Error: {detail}\n"
+
 
 class TestJsonOutput:
 
@@ -165,6 +175,31 @@ class TestJsonOutput:
             "errors": errors,
         }
         assert out.getvalue() == ""
+
+
+    def test_error_nests_problem_beside_message_status_and_errors(self) -> None:
+        status = HTTPStatus.UNPROCESSABLE_ENTITY
+        problem = {
+            "type": "https://app.flow.bio/api/v2/reference#validation_error",
+            "title": "Invalid request",
+            "status": int(status),
+            "detail": "Invalid sample import request",
+            "code": "validation_error",
+            "errors": [{"pointer": "/imports/0/accession", "code": "invalid", "detail": "bad"}],
+        }
+        out, err = io.StringIO(), io.StringIO()
+        output = Output(json_mode=True, stdout=out, stderr=err)
+
+        output.emit_error(
+            problem["detail"], status_code=status, details=problem["errors"], problem=problem,
+        )
+
+        assert json.loads(err.getvalue()) == {
+            "message": problem["detail"],
+            "status_code": int(status),
+            "errors": problem["errors"],
+            "problem": problem,
+        }
 
 
 class TestEmitRaw:

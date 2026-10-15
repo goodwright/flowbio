@@ -80,6 +80,7 @@ class HttpTransport:
 
         details: list[dict] | None = None
         code: str | None = None
+        problem: dict | None = None
         try:
             body = response.json()
         except ValueError:
@@ -88,13 +89,14 @@ class HttpTransport:
             message = self._non_json_error_message(response)
         else:
             if self._is_problem(response):
+                problem = body
                 message, details, code = self._unpack_problem_body(body)
             else:
                 message, details = self._unpack_legacy_error_body(body)
         exception_class = self._STATUS_TO_EXCEPTION.get(
             response.status_code, FlowApiError,
         )
-        raise exception_class(response.status_code, message, details, code)
+        raise exception_class(response.status_code, message, details, code, problem)
 
     @staticmethod
     def _is_problem(response: httpx.Response) -> bool:

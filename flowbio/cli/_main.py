@@ -92,6 +92,7 @@ def _dispatch(args: argparse.Namespace) -> int:
         details = error.errors if isinstance(error, AnnotationValidationError) else error.details
         output.emit_error(
             error.message, status_code=error.status_code, details=details,
+            problem=error.problem,
         )
         return int(exit_code_for(error))
 
