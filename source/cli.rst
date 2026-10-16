@@ -446,11 +446,10 @@ timestamps, ``null`` if not yet reached), ``accessions``, ``sample_ids``
 **Exit codes** — ``0`` the job was created (regardless of its eventual
 outcome — check that with ``import-status``); ``2`` the sheet is
 structurally invalid (see the checks above), including not being a
-readable ``.csv`` or having no rows; ``1`` the API rejected the batch
+readable ``.csv`` or having no rows; ``5`` the API rejected the batch
 (e.g. unknown sample type, missing required metadata, an unsupported
-accession format — these come back as an HTTP ``422``; ``5`` in the
-unlikely case it answers ``400`` instead); ``3`` authentication failure;
-otherwise the standard mapping above.
+accession format); ``3`` authentication failure; otherwise the standard
+mapping above.
 
 **Example**
 
@@ -556,8 +555,8 @@ mode: by default as an ``Error: <message>`` line, or — under ``--json`` — as
 ``{"message": ..., "status_code": ...}`` document.
 
 **Exit codes** — ``0`` success; ``2`` usage error (e.g. a ``?`` in ``PATH``);
-``3`` authentication failure; ``4`` not found; ``5`` bad request; otherwise the
-standard mapping above.
+``3`` authentication failure; ``4`` not found; ``5`` bad request or invalid
+input; otherwise the standard mapping above.
 
 **Example**
 

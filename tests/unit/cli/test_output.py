@@ -46,6 +46,20 @@ class TestExitCodeFor:
 
         assert exit_code_for(exc) == ExitCode.BAD_REQUEST
 
+    def test_validation_error_code_maps_to_bad_request(self) -> None:
+        exc = FlowApiError(
+            HTTPStatus.UNPROCESSABLE_ENTITY, "Invalid request", code="validation_error",
+        )
+
+        assert exit_code_for(exc) == ExitCode.BAD_REQUEST
+
+    def test_unprocessable_entity_with_other_code_maps_to_runtime(self) -> None:
+        exc = FlowApiError(
+            HTTPStatus.UNPROCESSABLE_ENTITY, "Invalid request", code="some_future_code",
+        )
+
+        assert exit_code_for(exc) == ExitCode.RUNTIME
+
     def test_other_flow_api_error_maps_to_runtime(self) -> None:
         exc = FlowApiError(HTTPStatus.INTERNAL_SERVER_ERROR, "Server exploded")
 

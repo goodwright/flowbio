@@ -1168,7 +1168,7 @@ class TestSamplesImport:
             "--token", TOKEN, "samples", "import", "--sheet", str(sheet),
         )
 
-        assert result.exit_code == 1
+        assert result.exit_code == 5
         assert route.call_count == 1
         assert "Invalid sample import request" in result.stderr
         assert f"/imports/0/sample_type: {detail_message}" in result.stderr

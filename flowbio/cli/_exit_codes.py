@@ -54,6 +54,9 @@ def exit_code_for(exc: Exception) -> ExitCode:
     # AnnotationValidationError is a BadRequestError subclass, so it is covered.
     if isinstance(exc, BadRequestError):
         return ExitCode.BAD_REQUEST
+    # The v2 API reports invalid input as a 422 with this code.
+    if isinstance(exc, FlowApiError) and exc.code == "validation_error":
+        return ExitCode.BAD_REQUEST
     if isinstance(exc, FlowApiError):
         return ExitCode.RUNTIME
     return ExitCode.RUNTIME
