@@ -15,6 +15,7 @@ from flowbio.v2.exceptions import (
     BadRequestError,
     FlowApiError,
     NotFoundError,
+    UnprocessableError,
 )
 
 
@@ -51,11 +52,11 @@ def exit_code_for(exc: Exception) -> ExitCode:
         return ExitCode.AUTH
     if isinstance(exc, NotFoundError):
         return ExitCode.NOT_FOUND
-    # AnnotationValidationError is a BadRequestError subclass, so it is covered.
+    # A 422 with a code this client does not know is the generic error for its
+    # status, not invalid input, so only a validation_error is a bad request.
+    if isinstance(exc, UnprocessableError):
+        return ExitCode.BAD_REQUEST if exc.code == "validation_error" else ExitCode.RUNTIME
     if isinstance(exc, BadRequestError):
-        return ExitCode.BAD_REQUEST
-    # The v2 API reports invalid input as a 422 with this code.
-    if isinstance(exc, FlowApiError) and exc.code == "validation_error":
         return ExitCode.BAD_REQUEST
     if isinstance(exc, FlowApiError):
         return ExitCode.RUNTIME

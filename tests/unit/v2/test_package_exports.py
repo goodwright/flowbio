@@ -62,6 +62,11 @@ class TestSubmoduleExports:
 
         assert BadRequestError is not None
 
+    def test_unprocessable_error_importable_from_exceptions(self) -> None:
+        from flowbio.v2.exceptions import UnprocessableError
+
+        assert UnprocessableError is not None
+
     def test_not_found_error_importable_from_exceptions(self) -> None:
         from flowbio.v2.exceptions import NotFoundError
 

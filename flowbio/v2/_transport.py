@@ -9,6 +9,7 @@ from flowbio.v2.exceptions import (
     BadRequestError,
     FlowApiError,
     NotFoundError,
+    UnprocessableError,
 )
 
 try:
@@ -72,6 +73,7 @@ class HttpTransport:
         HTTPStatus.BAD_REQUEST: BadRequestError,
         HTTPStatus.UNAUTHORIZED: AuthenticationError,
         HTTPStatus.NOT_FOUND: NotFoundError,
+        HTTPStatus.UNPROCESSABLE_ENTITY: UnprocessableError,
     }
 
     def _raise_for_error(self, response: httpx.Response) -> None:
