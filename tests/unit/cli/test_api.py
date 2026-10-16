@@ -1,3 +1,4 @@
+import io
 import json
 from http import HTTPStatus
 
@@ -168,3 +169,139 @@ class TestApiGet:
             "status_code": int(HTTPStatus.NOT_FOUND),
             "problem": problem,
         }
+
+
+WRITE_VERBS = pytest.mark.parametrize(
+    ("verb", "route_for"), [("post", respx.post), ("patch", respx.patch)],
+)
+
+
+class TestApiWrite:
+
+    @WRITE_VERBS
+    @respx.mock
+    def test_sends_body_file_and_writes_raw_response(
+        self, run_cli, tmp_path, verb, route_for,
+    ) -> None:
+        body = '{"name": "x"}'
+        response_body = '{"id": "1", "name": "x"}'
+        body_file = tmp_path / "body.json"
+        body_file.write_text(body)
+        route = route_for(f"{DEFAULT_BASE_URL}/v2/projects/1").mock(
+            return_value=httpx.Response(HTTPStatus.OK, text=response_body),
+        )
+
+        result = run_cli(
+            "api", verb, "/v2/projects/1", "--body", str(body_file),
+            "--token", TOKEN,
+        )
+
+        assert result.exit_code == 0
+        assert result.stdout == response_body
+        request = route.calls[0].request
+        assert request.content == body.encode()
+        assert request.headers["Authorization"] == f"Bearer {TOKEN}"
+
+    @WRITE_VERBS
+    @respx.mock
+    def test_reads_body_from_stdin(
+        self, run_cli, monkeypatch, verb, route_for,
+    ) -> None:
+        body = '{"metadata": {"condition": null}}'
+        monkeypatch.setattr("sys.stdin", io.StringIO(body))
+        route = route_for(f"{DEFAULT_BASE_URL}/v2/samples/1").mock(
+            return_value=httpx.Response(HTTPStatus.OK, text="{}"),
+        )
+
+        result = run_cli(
+            "api", verb, "/v2/samples/1", "--body", "-", "--token", TOKEN,
+        )
+
+        assert result.exit_code == 0
+        assert route.calls[0].request.content == body.encode()
+
+    @respx.mock
+    def test_post_writes_created_body_to_stdout(self, run_cli, tmp_path) -> None:
+        response_body = '{"id": "7", "name": "RNA-seq 2026"}'
+        body_file = tmp_path / "body.json"
+        body_file.write_text('{"name": "RNA-seq 2026"}')
+        respx.post(f"{DEFAULT_BASE_URL}/v2/projects").mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, text=response_body),
+        )
+
+        result = run_cli(
+            "api", "post", "/v2/projects", "--body", str(body_file),
+            "--token", TOKEN,
+        )
+
+        assert result.exit_code == 0
+        assert result.stdout == response_body
+
+    @respx.mock
+    def test_missing_body_file_is_usage_error(self, run_cli, tmp_path) -> None:
+        missing = tmp_path / "missing.json"
+        route = respx.patch(f"{DEFAULT_BASE_URL}/v2/samples/1").mock(
+            return_value=httpx.Response(HTTPStatus.OK, text="{}"),
+        )
+
+        result = run_cli(
+            "api", "patch", "/v2/samples/1", "--body", str(missing),
+            "--token", TOKEN, "--json",
+        )
+
+        assert result.exit_code == 2
+        assert result.stdout == ""
+        assert str(missing) in json.loads(result.stderr)["message"]
+        assert not route.called
+
+    def test_body_is_required(self, run_cli) -> None:
+        result = run_cli("api", "patch", "/v2/samples/1", "--token", TOKEN)
+
+        assert result.exit_code == 2
+
+    @respx.mock
+    def test_requires_credentials(
+        self, run_cli, no_credentials, monkeypatch, tmp_path,
+    ) -> None:
+        body_file = tmp_path / "body.json"
+        body_file.write_text('{"name": "x"}')
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        route = respx.post(f"{DEFAULT_BASE_URL}/v2/projects").mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, text="{}"),
+        )
+
+        result = run_cli("api", "post", "/v2/projects", "--body", str(body_file))
+
+        assert result.exit_code == 2
+        assert not route.called
+
+    @respx.mock
+    def test_validation_problem_is_passed_through(self, run_cli, tmp_path) -> None:
+        body_file = tmp_path / "body.json"
+        body_file.write_text('{"project": "2"}')
+        response = problem_response(
+            HTTPStatus.UNPROCESSABLE_ENTITY,
+            "validation_error",
+            "`project` can't be changed with this endpoint: moving a sample "
+            "changes who can see it and its data. Move it in the Flow web app.",
+        )
+        problem = response.json()
+        respx.patch(f"{DEFAULT_BASE_URL}/v2/samples/1").mock(return_value=response)
+
+        result = run_cli(
+            "api", "patch", "/v2/samples/1", "--body", str(body_file),
+            "--token", TOKEN, "--json",
+        )
+
+        assert result.exit_code == 5
+        assert result.stdout == ""
+        assert json.loads(result.stderr) == {
+            "message": problem["detail"],
+            "status_code": int(HTTPStatus.UNPROCESSABLE_ENTITY),
+            "problem": problem,
+        }
+
+    def test_there_is_no_delete_verb(self, run_cli) -> None:
+        result = run_cli("api", "delete", "/v2/projects/1", "--token", TOKEN)
+
+        assert result.exit_code == 2

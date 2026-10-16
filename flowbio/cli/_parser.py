@@ -59,8 +59,8 @@ def build_parser() -> argparse.ArgumentParser:
     api_parser = resources.add_parser(
         "api",
         parents=[global_parent],
-        help="Read-only API access (arbitrary GET passthrough).",
-        description="Issue read-only GET requests to the Flow API.",
+        help="Raw API access (GET, POST and PATCH passthrough).",
+        description="Issue raw GET, POST and PATCH requests to the Flow API.",
     )
     api_parser.set_defaults(command_parser=api_parser)
     register_api(api_parser, global_parent)
