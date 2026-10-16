@@ -104,10 +104,15 @@ def format_issue(issue: JsonValue) -> str:
     """
     if not isinstance(issue, dict):
         return str(issue)
-    text = issue.get("message", issue.get("detail"))
-    if text is None:
+    is_problem_entry = "detail" in issue
+    is_legacy_issue = "message" in issue
+    if is_problem_entry:
+        locator = issue.get("pointer") or issue.get("parameter")
+        text = issue["detail"]
+    elif is_legacy_issue:
+        row = issue.get("row")
+        locator = f"row {row}" if row is not None else issue.get("field")
+        text = issue["message"]
+    else:
         return str(issue)
-    if issue.get("row") is not None:
-        return f"row {issue['row']}: {text}"
-    locator = issue.get("field") or issue.get("pointer") or issue.get("parameter")
     return f"{locator}: {text}" if locator else str(text)
