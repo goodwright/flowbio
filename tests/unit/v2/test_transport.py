@@ -14,6 +14,7 @@ from flowbio.v2.exceptions import (
     BadRequestError,
     FlowApiError,
     NotFoundError,
+    UnprocessableError,
 )
 
 from tests.unit.v2.conftest import DEFAULT_BASE_URL, problem_response
@@ -348,6 +349,40 @@ class TestTransportErrorBodyPreservation:
 class TestTransportProblemDetails:
 
     @respx.mock
+    def test_raises_unprocessable_error_on_422(self) -> None:
+        respx.post(f"{DEFAULT_BASE_URL}/v2/projects").mock(
+            return_value=problem_response(
+                HTTPStatus.UNPROCESSABLE_ENTITY, "validation_error", "Invalid project",
+                [{"pointer": "/name", "code": "invalid", "detail": "You already have a project with this name."}],
+            ),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(UnprocessableError) as exc_info:
+            transport.post("/v2/projects", json={"name": "Atlas"})
+
+        # A caller handling invalid input as a bad request keeps doing so.
+        assert isinstance(exc_info.value, BadRequestError)
+        assert exc_info.value.code == "validation_error"
+        assert exc_info.value.details == [
+            {"pointer": "/name", "code": "invalid", "detail": "You already have a project with this name."},
+        ]
+
+    @respx.mock
+    def test_an_unmapped_client_error_is_not_a_bad_request(self) -> None:
+        respx.post(f"{DEFAULT_BASE_URL}/v2/projects").mock(
+            return_value=problem_response(HTTPStatus.CONFLICT, "conflict", "Conflict"),
+        )
+
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(FlowApiError) as exc_info:
+            transport.post("/v2/projects", json={})
+
+        assert not isinstance(exc_info.value, BadRequestError)
+
+    @respx.mock
     def test_reads_message_code_and_details_from_problem(self) -> None:
         detail = "Invalid sample import request"
         code = "validation_error"
@@ -485,7 +520,7 @@ class TestTransportProblemDetails:
 
         transport = HttpTransport(DEFAULT_BASE_URL)
 
-        with pytest.raises(FlowApiError) as exc_info:
+        with pytest.raises(UnprocessableError) as exc_info:
             transport.get("/legacy")
 
         assert exc_info.value.message == message
