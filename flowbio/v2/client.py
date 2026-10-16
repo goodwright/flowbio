@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import timedelta
+from http import HTTPMethod
 
 from flowbio.v2._transport import HttpTransport
 from flowbio.v2._uploads import ChunkedUploader
@@ -129,3 +130,29 @@ class Client:
         :raises FlowApiError: If the API returns a non-success status code.
         """
         return self._transport.get_text(path, params=params)
+
+    def post_raw(self, path: str, body: str) -> str:
+        """Issue a POST with a JSON body to an arbitrary API path.
+
+        A low-level write escape hatch used by the CLI's ``api post`` command.
+        The body is sent unchanged, so the server alone validates it.
+
+        :param path: API path relative to the base URL (leading slash optional).
+        :param body: The JSON document to send.
+        :returns: The raw response body text.
+        :raises FlowApiError: If the API returns a non-success status code.
+        """
+        return self._transport.send_text(HTTPMethod.POST, path, body)
+
+    def patch_raw(self, path: str, body: str) -> str:
+        """Issue a PATCH with a JSON body to an arbitrary API path.
+
+        A low-level write escape hatch used by the CLI's ``api patch``
+        command. The body is sent unchanged, so the server alone validates it.
+
+        :param path: API path relative to the base URL (leading slash optional).
+        :param body: The JSON document to send.
+        :returns: The raw response body text.
+        :raises FlowApiError: If the API returns a non-success status code.
+        """
+        return self._transport.send_text(HTTPMethod.PATCH, path, body)

@@ -1,5 +1,6 @@
 import json
 from datetime import timedelta
+from http import HTTPStatus
 from unittest.mock import patch
 
 import httpx
@@ -184,3 +185,32 @@ class TestClientGetRaw:
         Client().get_raw("/samples/search", params=params)
 
         assert sorted(route.calls[0].request.url.params.multi_items()) == sorted(params)
+
+
+class TestClientWriteRaw:
+
+    @respx.mock
+    def test_post_raw_posts_body_and_returns_raw_response(self) -> None:
+        body = '{"name": "RNA-seq"}'
+        response_body = '{"id": "7", "name": "RNA-seq"}'
+        route = respx.post(f"{DEFAULT_BASE_URL}/v2/projects").mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, text=response_body),
+        )
+
+        result = Client().post_raw("/v2/projects", body)
+
+        assert result == response_body
+        assert route.calls[0].request.content == body.encode()
+
+    @respx.mock
+    def test_patch_raw_patches_body_and_returns_raw_response(self) -> None:
+        body = '{"name": "renamed"}'
+        response_body = '{"id": "7", "name": "renamed"}'
+        route = respx.patch(f"{DEFAULT_BASE_URL}/v2/projects/7").mock(
+            return_value=httpx.Response(HTTPStatus.OK, text=response_body),
+        )
+
+        result = Client().patch_raw("/v2/projects/7", body)
+
+        assert result == response_body
+        assert route.calls[0].request.content == body.encode()
