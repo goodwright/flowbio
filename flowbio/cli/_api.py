@@ -4,8 +4,9 @@
 URL and writes the response body to stdout verbatim, so a caller can pipe it
 straight through ``jq``. It uses a token when one is available and otherwise
 reads anonymously. ``api post`` and ``api patch`` send a JSON body the same way
-and always require a token. There is deliberately no ``delete`` verb, so the
-passthrough cannot remove remote state.
+but always require credentials, never falling back to an anonymous request.
+There is deliberately no ``delete`` verb, so the passthrough cannot remove
+remote state.
 """
 from __future__ import annotations
 
@@ -52,10 +53,10 @@ def register(
 
 
 def _register_write_verb(
-    verbs: argparse._SubParsersAction,
+    verbs: argparse._SubParsersAction[argparse.ArgumentParser],
     name: str,
     global_parent: argparse.ArgumentParser,
-    send: Callable[[Client, str, str], str],
+    send: Callable[[Client, str, bytes], str],
 ) -> None:
     method = name.upper()
     verb = verbs.add_parser(
@@ -66,7 +67,7 @@ def _register_write_verb(
             f"Issue a {method} with a JSON body to a path under the Flow API "
             "base URL and write the raw response body to stdout. The body is "
             "sent unchanged and validated by the server; see /v2/reference for "
-            "each operation's body. Requires a token."
+            "each operation's body. Requires credentials; never anonymous."
         ),
     )
     verb.set_defaults(command_parser=verb, handler=_write_command, send=send)
@@ -127,7 +128,7 @@ def _write_command(args: argparse.Namespace, client: Client, output: Output) -> 
     return ExitCode.SUCCESS
 
 
-def _read_body(source: str) -> str:
+def _read_body(source: str) -> bytes:
     if source == "-":
-        return sys.stdin.read()
-    return existing_file(Path(source)).read_text()
+        return sys.stdin.buffer.read()
+    return existing_file(Path(source)).read_bytes()

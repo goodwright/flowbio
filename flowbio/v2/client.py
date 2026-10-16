@@ -131,7 +131,7 @@ class Client:
         """
         return self._transport.get_text(path, params=params)
 
-    def post_raw(self, path: str, body: str) -> str:
+    def post_raw(self, path: str, body: bytes) -> str:
         """Issue a POST with a JSON body to an arbitrary API path.
 
         A low-level write escape hatch used by the CLI's ``api post`` command.
@@ -144,7 +144,7 @@ class Client:
         """
         return self._transport.send_text(HTTPMethod.POST, path, body)
 
-    def patch_raw(self, path: str, body: str) -> str:
+    def patch_raw(self, path: str, body: bytes) -> str:
         """Issue a PATCH with a JSON body to an arbitrary API path.
 
         A low-level write escape hatch used by the CLI's ``api patch``

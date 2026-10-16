@@ -578,15 +578,18 @@ base URL and print the raw response body to stdout — the write counterparts of
     flowbio api patch PATH --body FILE|-
 
 ``--body`` names a file holding the JSON request body, or ``-`` to read it from
-stdin. The body is sent unchanged: the server validates it, so malformed JSON
+stdin. The body is sent unchanged, byte for byte: the server validates it, so malformed JSON
 or a field the endpoint refuses surfaces as exit ``5`` with the server's
 message. Each operation's body is described in ``/v2/reference``.
 
 Unlike ``api get``, these commands always require credentials; they never fall
 back to an anonymous request.
 
-**Output** and **exit codes** are as for ``api get``; a missing ``--body`` file
-is a usage error (exit ``2``).
+**Output** is as for ``api get``.
+
+**Exit codes** — ``0`` success; ``2`` usage error (e.g. a missing ``--body``
+file); ``3`` authentication failure; ``4`` not found; ``5`` bad request or
+invalid input; otherwise the standard mapping above.
 
 **Example**
 

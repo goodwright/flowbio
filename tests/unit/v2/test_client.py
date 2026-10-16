@@ -191,7 +191,7 @@ class TestClientWriteRaw:
 
     @respx.mock
     def test_post_raw_posts_body_and_returns_raw_response(self) -> None:
-        body = '{"name": "RNA-seq"}'
+        body = b'{"name": "RNA-seq"}'
         response_body = '{"id": "7", "name": "RNA-seq"}'
         route = respx.post(f"{DEFAULT_BASE_URL}/v2/projects").mock(
             return_value=httpx.Response(HTTPStatus.CREATED, text=response_body),
@@ -200,11 +200,11 @@ class TestClientWriteRaw:
         result = Client().post_raw("/v2/projects", body)
 
         assert result == response_body
-        assert route.calls[0].request.content == body.encode()
+        assert route.calls[0].request.content == body
 
     @respx.mock
     def test_patch_raw_patches_body_and_returns_raw_response(self) -> None:
-        body = '{"name": "renamed"}'
+        body = b'{"name": "renamed"}'
         response_body = '{"id": "7", "name": "renamed"}'
         route = respx.patch(f"{DEFAULT_BASE_URL}/v2/projects/7").mock(
             return_value=httpx.Response(HTTPStatus.OK, text=response_body),
@@ -213,4 +213,4 @@ class TestClientWriteRaw:
         result = Client().patch_raw("/v2/projects/7", body)
 
         assert result == response_body
-        assert route.calls[0].request.content == body.encode()
+        assert route.calls[0].request.content == body
