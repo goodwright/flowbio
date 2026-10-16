@@ -65,7 +65,20 @@ class AuthenticationError(FlowApiError):
 
 
 class BadRequestError(FlowApiError):
-    """Raised when the API returns a 400 Bad Request response."""
+    """Raised when the API refuses a request as invalid: a 400 Bad Request
+    response, or a 422 through its :class:`UnprocessableError` subclass."""
+
+    pass
+
+
+class UnprocessableError(BadRequestError):
+    """Raised when the API returns a 422 Unprocessable Content response.
+
+    The request was well formed but the API refused its values, such as a
+    name already in use; :attr:`~FlowApiError.details` locates each part of
+    the request at fault. It is a :class:`BadRequestError`, so code handling
+    invalid input as a bad request catches it too.
+    """
 
     pass
 

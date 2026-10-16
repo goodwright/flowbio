@@ -10,6 +10,7 @@ from flowbio.v2.exceptions import (
     BadRequestError,
     FlowApiError,
     NotFoundError,
+    UnprocessableError,
 )
 
 
@@ -47,14 +48,14 @@ class TestExitCodeFor:
         assert exit_code_for(exc) == ExitCode.BAD_REQUEST
 
     def test_validation_error_code_maps_to_bad_request(self) -> None:
-        exc = FlowApiError(
+        exc = UnprocessableError(
             HTTPStatus.UNPROCESSABLE_ENTITY, "Invalid request", code="validation_error",
         )
 
         assert exit_code_for(exc) == ExitCode.BAD_REQUEST
 
     def test_unprocessable_entity_with_other_code_maps_to_runtime(self) -> None:
-        exc = FlowApiError(
+        exc = UnprocessableError(
             HTTPStatus.UNPROCESSABLE_ENTITY, "Invalid request", code="some_future_code",
         )
 
