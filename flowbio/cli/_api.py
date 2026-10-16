@@ -1,16 +1,21 @@
-"""The ``flowbio api`` command group — read-only API passthrough.
+"""The ``flowbio api`` command group — raw API passthrough.
 
-A single ``api get <path>`` verb issues a GET to an arbitrary path under the
-configured base URL and writes the response body to stdout verbatim, so a
-caller can pipe it straight through ``jq``. It uses a token when one is
-available and otherwise reads anonymously. The command is GET-only by
-construction, so it cannot mutate remote state.
+``api get <path>`` issues a GET to an arbitrary path under the configured base
+URL and writes the response body to stdout verbatim, so a caller can pipe it
+straight through ``jq``. It uses a token when one is available and otherwise
+reads anonymously. ``api post`` and ``api patch`` send a JSON body the same way
+and always require a token. There is deliberately no ``delete`` verb, so the
+passthrough cannot remove remote state.
 """
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
+from typing import Callable
 
 from flowbio.cli._exit_codes import CliUsageError, ExitCode
+from flowbio.cli._files import existing_file
 from flowbio.cli._output import Output
 from flowbio.v2.client import Client
 
@@ -41,6 +46,40 @@ def register(
         metavar="KEY=VALUE",
         action="append",
         help="Query parameter (repeatable); the value is URL-encoded.",
+    )
+    _register_write_verb(verbs, "post", global_parent, Client.post_raw)
+    _register_write_verb(verbs, "patch", global_parent, Client.patch_raw)
+
+
+def _register_write_verb(
+    verbs: argparse._SubParsersAction,
+    name: str,
+    global_parent: argparse.ArgumentParser,
+    send: Callable[[Client, str, str], str],
+) -> None:
+    method = name.upper()
+    verb = verbs.add_parser(
+        name,
+        parents=[global_parent],
+        help=f"Issue a {method} with a JSON body and print the raw response body.",
+        description=(
+            f"Issue a {method} with a JSON body to a path under the Flow API "
+            "base URL and write the raw response body to stdout. The body is "
+            "sent unchanged and validated by the server; see /v2/reference for "
+            "each operation's body. Requires a token."
+        ),
+    )
+    verb.set_defaults(command_parser=verb, handler=_write_command, send=send)
+    verb.add_argument(
+        "path",
+        metavar="PATH",
+        help="API path relative to the base URL, e.g. /v2/projects.",
+    )
+    verb.add_argument(
+        "--body",
+        metavar="FILE|-",
+        required=True,
+        help="File holding the JSON request body, or - to read it from stdin.",
     )
 
 
@@ -73,3 +112,22 @@ def _parse_params(raw: list[str] | None) -> list[tuple[str, str]]:
             )
         pairs.append((key, value))
     return pairs
+
+
+def _write_command(args: argparse.Namespace, client: Client, output: Output) -> ExitCode:
+    """Send the JSON body and write the raw response body to stdout.
+
+    :param args: Parsed command-line arguments.
+    :param client: The authenticated Flow client.
+    :param output: The result/error renderer.
+    :returns: :attr:`ExitCode.SUCCESS` on success.
+    :raises CliUsageError: If the ``--body`` file does not exist.
+    """
+    output.emit_raw(args.send(client, args.path, _read_body(args.body)))
+    return ExitCode.SUCCESS
+
+
+def _read_body(source: str) -> str:
+    if source == "-":
+        return sys.stdin.read()
+    return existing_file(Path(source)).read_text()

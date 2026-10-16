@@ -564,3 +564,33 @@ input; otherwise the standard mapping above.
 
     $ flowbio api get /samples/search --param name=rna-seq --param count=100 | jq '.count'
     42
+
+``api post`` / ``api patch``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Issue a ``POST`` or ``PATCH`` with a JSON body to any path under the Flow API
+base URL and print the raw response body to stdout — the write counterparts of
+``api get``. There is no ``api delete``.
+
+::
+
+    flowbio api post PATH --body FILE|-
+    flowbio api patch PATH --body FILE|-
+
+``--body`` names a file holding the JSON request body, or ``-`` to read it from
+stdin. The body is sent unchanged: the server validates it, so malformed JSON
+or a field the endpoint refuses surfaces as exit ``5`` with the server's
+message. Each operation's body is described in ``/v2/reference``.
+
+Unlike ``api get``, these commands always require credentials; they never fall
+back to an anonymous request.
+
+**Output** and **exit codes** are as for ``api get``; a missing ``--body`` file
+is a usage error (exit ``2``).
+
+**Example**
+
+.. code-block:: bash
+
+    $ echo '{"name": "RNA-seq 2026"}' | flowbio api post /v2/projects --body -
+    {"id": "7", "name": "RNA-seq 2026", "description": "", "created": "2026-10-16T10:00:00Z"}
