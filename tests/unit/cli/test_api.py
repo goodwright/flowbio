@@ -207,8 +207,8 @@ class TestApiWrite:
     def test_reads_body_from_stdin(
         self, run_cli, monkeypatch, verb, route_for,
     ) -> None:
-        body = '{"metadata": {"condition": null}}'
-        monkeypatch.setattr("sys.stdin", io.StringIO(body))
+        body = '{"metadata": {"condition": "Ünïcode"}}'.encode()
+        monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(body)))
         route = route_for(f"{DEFAULT_BASE_URL}/v2/samples/1").mock(
             return_value=httpx.Response(HTTPStatus.OK, text="{}"),
         )
@@ -218,7 +218,23 @@ class TestApiWrite:
         )
 
         assert result.exit_code == 0
-        assert route.calls[0].request.content == body.encode()
+        assert route.calls[0].request.content == body
+
+    @respx.mock
+    def test_sends_body_bytes_without_decoding(self, run_cli, tmp_path) -> None:
+        body = '{"name": "Café"}'.encode("latin-1")
+        body_file = tmp_path / "body.json"
+        body_file.write_bytes(body)
+        route = respx.patch(f"{DEFAULT_BASE_URL}/v2/samples/1").mock(
+            return_value=httpx.Response(HTTPStatus.OK, text="{}"),
+        )
+
+        run_cli(
+            "api", "patch", "/v2/samples/1", "--body", str(body_file),
+            "--token", TOKEN,
+        )
+
+        assert route.calls[0].request.content == body
 
     @respx.mock
     def test_post_writes_created_body_to_stdout(self, run_cli, tmp_path) -> None:
@@ -265,7 +281,7 @@ class TestApiWrite:
     ) -> None:
         body_file = tmp_path / "body.json"
         body_file.write_text('{"name": "x"}')
-        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(b"")))
         route = respx.post(f"{DEFAULT_BASE_URL}/v2/projects").mock(
             return_value=httpx.Response(HTTPStatus.CREATED, text="{}"),
         )

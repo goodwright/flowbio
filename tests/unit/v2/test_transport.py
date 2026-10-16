@@ -631,7 +631,7 @@ class TestTransportSendText:
 
     @respx.mock
     def test_sends_body_verbatim_as_json(self) -> None:
-        body = '{"name": "Ünïcode", "a": 1}'
+        body = '{"name": "Ünïcode", "a": 1}'.encode()
         route = respx.patch(f"{DEFAULT_BASE_URL}/v2/samples/1").mock(
             return_value=httpx.Response(HTTPStatus.OK, text="{}"),
         )
@@ -640,7 +640,7 @@ class TestTransportSendText:
         transport.send_text(HTTPMethod.PATCH, "/v2/samples/1", body)
 
         request = route.calls[0].request
-        assert request.content == body.encode()
+        assert request.content == body
         assert request.headers["Content-Type"] == "application/json"
 
     @respx.mock
@@ -651,7 +651,7 @@ class TestTransportSendText:
         )
         transport = HttpTransport(DEFAULT_BASE_URL)
 
-        result = transport.send_text(HTTPMethod.POST, "/v2/projects", "{}")
+        result = transport.send_text(HTTPMethod.POST, "/v2/projects", b"{}")
 
         assert result == response_body
 
@@ -665,7 +665,7 @@ class TestTransportSendText:
         transport = HttpTransport(DEFAULT_BASE_URL)
 
         with pytest.raises(NotFoundError):
-            transport.send_text(HTTPMethod.PATCH, "/v2/projects/9", "{}")
+            transport.send_text(HTTPMethod.PATCH, "/v2/projects/9", b"{}")
 
 
 class TestTransportTokenManagement:

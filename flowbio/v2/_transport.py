@@ -246,10 +246,10 @@ class HttpTransport:
         )
         return self._handle_response(response)
 
-    def send_text(self, method: HTTPMethod, path: str, body: str) -> str:
+    def send_text(self, method: HTTPMethod, path: str, body: bytes) -> str:
         """Send a JSON body and return the raw response body as text.
 
-        The body is sent exactly as given, without being parsed or
+        The body is sent byte for byte, without being decoded, parsed or
         re-serialised, so callers can pass a JSON document through verbatim.
 
         :param method: The HTTP method to send (e.g. ``HTTPMethod.PATCH``).
