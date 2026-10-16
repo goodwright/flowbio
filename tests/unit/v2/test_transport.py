@@ -1,6 +1,6 @@
 import json
 from datetime import timedelta
-from http import HTTPStatus
+from http import HTTPMethod, HTTPStatus
 from unittest.mock import patch
 
 import httpx
@@ -625,6 +625,47 @@ class TestTransportGetText:
 
         with pytest.raises(NotFoundError):
             transport.get_text("/nope")
+
+
+class TestTransportSendText:
+
+    @respx.mock
+    def test_sends_body_verbatim_as_json(self) -> None:
+        body = '{"name": "Ünïcode", "a": 1}'
+        route = respx.patch(f"{DEFAULT_BASE_URL}/v2/samples/1").mock(
+            return_value=httpx.Response(HTTPStatus.OK, text="{}"),
+        )
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        transport.send_text(HTTPMethod.PATCH, "/v2/samples/1", body)
+
+        request = route.calls[0].request
+        assert request.content == body.encode()
+        assert request.headers["Content-Type"] == "application/json"
+
+    @respx.mock
+    def test_returns_raw_response_body(self) -> None:
+        response_body = '{"id": "1", "name": "x"}'
+        respx.post(f"{DEFAULT_BASE_URL}/v2/projects").mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, text=response_body),
+        )
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        result = transport.send_text(HTTPMethod.POST, "/v2/projects", "{}")
+
+        assert result == response_body
+
+    @respx.mock
+    def test_raises_flow_api_error_on_non_success(self) -> None:
+        respx.patch(f"{DEFAULT_BASE_URL}/v2/projects/9").mock(
+            return_value=httpx.Response(
+                HTTPStatus.NOT_FOUND, json={"error": "missing"},
+            ),
+        )
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(NotFoundError):
+            transport.send_text(HTTPMethod.PATCH, "/v2/projects/9", "{}")
 
 
 class TestTransportTokenManagement:

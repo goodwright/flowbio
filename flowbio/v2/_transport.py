@@ -246,6 +246,25 @@ class HttpTransport:
         )
         return self._handle_response(response)
 
+    def send_text(self, method: HTTPMethod, path: str, body: str) -> str:
+        """Send a JSON body and return the raw response body as text.
+
+        The body is sent exactly as given, without being parsed or
+        re-serialised, so callers can pass a JSON document through verbatim.
+
+        :param method: The HTTP method to send (e.g. ``HTTPMethod.PATCH``).
+        :param path: The API path to request.
+        :param body: The JSON document to send as the request body.
+        :returns: The response body text.
+        :raises FlowApiError: If the API returns a non-success status code.
+        """
+        response = self._request(
+            method, self._url(path),
+            content=body, headers={"Content-Type": "application/json"},
+        )
+        self._raise_for_error(response)
+        return response.text
+
     def set_token(self, token: str) -> None:
         """Set the Bearer token for subsequent requests.
 
