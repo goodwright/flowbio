@@ -160,7 +160,7 @@ class HttpTransport:
         if needs_access_token_refresh:
             try:
                 self._refresh_access_token()
-                return self._client.request(method, url, **kwargs)
+                return self._send(method, url, **kwargs)
             except _RefreshFailed:
                 pass
 

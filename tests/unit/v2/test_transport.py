@@ -142,6 +142,11 @@ class _RecordingHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def do_CONNECT(self) -> None:
+        self.server.request_targets.append(self.path)
+        self.send_response(HTTPStatus.BAD_GATEWAY)
+        self.end_headers()
+
     def log_message(self, format: str, *args) -> None:
         pass
 
@@ -180,6 +185,20 @@ class TestTransportProxy:
         # receives only the path.
         assert local_server.request_targets == ["http://flow.invalid/api/me"]
 
+    @pytest.mark.parametrize("proxy_variable", ["HTTPS_PROXY", "ALL_PROXY"])
+    def test_tunnels_https_requests_through_the_environment_proxy(
+        self, local_server: HTTPServer, proxy_env: pytest.MonkeyPatch, proxy_variable: str,
+    ) -> None:
+        host, port = local_server.server_address
+        proxy_env.setenv(proxy_variable, f"http://{host}:{port}")
+        transport = HttpTransport("https://flow.invalid/api")
+
+        # The fake proxy refuses the tunnel, so no TLS server is needed to
+        # observe that the request was sent to it.
+        with pytest.raises(httpx.ProxyError):
+            transport.get("/me")
+
+        assert local_server.request_targets == ["flow.invalid:443"]
 
     def test_connects_directly_to_a_host_exempted_by_no_proxy(
         self, local_server: HTTPServer, proxy_env: pytest.MonkeyPatch,
@@ -192,6 +211,7 @@ class TestTransportProxy:
         transport.get("/me")
 
         assert local_server.request_targets == ["/api/me"]
+
 
 class TestTransportGet:
 
@@ -875,6 +895,28 @@ class TestTransportRefreshOnUnauthorized:
                 httpx.ConnectError("refused"),
                 httpx.Response(HTTPStatus.OK, json={"token": new_token, "user": {}}),
             ],
+        )
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        transport.set_token("expired.jwt")
+
+        result = transport.get("/me")
+
+        assert result == {"username": "alice"}
+
+    @respx.mock
+    @patch("time.sleep")
+    def test_retries_a_connection_failure_when_replaying_after_refresh(
+        self, _mock_sleep,
+    ) -> None:
+        respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            side_effect=[
+                httpx.Response(HTTPStatus.UNAUTHORIZED, json={"error": "Not authorized"}),
+                httpx.ConnectError("refused"),
+                httpx.Response(HTTPStatus.OK, json={"username": "alice"}),
+            ],
+        )
+        respx.get(f"{DEFAULT_BASE_URL}/token").mock(
+            return_value=httpx.Response(HTTPStatus.OK, json={"token": "fresh.jwt", "user": {}}),
         )
         transport = HttpTransport(DEFAULT_BASE_URL)
         transport.set_token("expired.jwt")
