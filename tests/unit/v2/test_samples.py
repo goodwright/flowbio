@@ -498,7 +498,9 @@ class TestUploadSample:
             httpx.ConnectError("Connection refused"),
         ]
 
-        client = Client(config=ClientConfig(chunk_size=40, show_progress=False))
+        client = Client(config=ClientConfig(
+            chunk_size=40, show_progress=False, connection_retries=0,
+        ))
 
         with pytest.raises(httpx.ConnectError):
             client.samples.upload_sample(
