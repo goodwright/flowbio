@@ -72,10 +72,6 @@ class Client:
 
         client = Client(base_url="https://mycompany.flow.bio/api")
 
-    Requests go through the proxies named by the standard ``HTTP_PROXY``,
-    ``HTTPS_PROXY`` and ``ALL_PROXY`` environment variables, except for
-    hosts listed in ``NO_PROXY``.
-
     :param base_url: The base URL of the Flow API. Defaults to
         ``"https://app.flow.bio/api"``.
     :param config: Optional client configuration. If not provided,
