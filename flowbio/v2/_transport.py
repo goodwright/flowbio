@@ -3,6 +3,7 @@ from http import HTTPMethod, HTTPStatus
 from importlib.metadata import PackageNotFoundError, version
 
 import httpx
+from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from flowbio.v2.exceptions import (
     AuthenticationError,
@@ -57,10 +58,10 @@ class HttpTransport:
         request_timeout: timedelta = timedelta(seconds=60),
     ) -> None:
         self._base_url = base_url.rstrip("/")
+        self._connection_retries = connection_retries
         request_seconds = request_timeout.total_seconds()
         self._client = httpx.Client(
             headers={"User-Agent": f"flowbio-python/{_CLIENT_VERSION}"},
-            transport=httpx.HTTPTransport(retries=connection_retries),
             timeout=httpx.Timeout(
                 connect=self._CONNECT_TIMEOUT_SECONDS,
                 read=request_seconds,
@@ -144,8 +145,17 @@ class HttpTransport:
         clean_path = path.lstrip("/")
         return f"{self._base_url}/{clean_path}"
 
+    def _send(self, method: HTTPMethod, url: str, **kwargs) -> httpx.Response:
+        retryer = Retrying(
+            retry=retry_if_exception_type((httpx.ConnectError, httpx.ConnectTimeout)),
+            stop=stop_after_attempt(self._connection_retries + 1),
+            wait=wait_exponential(multiplier=0.5),
+            reraise=True,
+        )
+        return retryer(self._client.request, method, url, **kwargs)
+
     def _request(self, method: HTTPMethod, url: str, **kwargs) -> httpx.Response:
-        response = self._client.request(method, url, **kwargs)
+        response = self._send(method, url, **kwargs)
         needs_access_token_refresh = response.status_code == HTTPStatus.UNAUTHORIZED and self._can_refresh()
         if needs_access_token_refresh:
             try:
@@ -160,9 +170,9 @@ class HttpTransport:
         return "Authorization" in self._client.headers
 
     def _refresh_access_token(self) -> None:
-        # Calls httpx directly (not self._request) to avoid recursion.
+        # Not self._request: a 401 here would recurse into another refresh.
         # The refresh cookie travels via the httpx cookie jar.
-        response = self._client.get(self._url("/token"))
+        response = self._send(HTTPMethod.GET, self._url("/token"))
         if not response.is_success:
             raise _RefreshFailed
         try:

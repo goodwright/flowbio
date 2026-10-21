@@ -35,6 +35,10 @@ environment variable > the library default (``https://app.flow.bio/api``). For
 both tokens and the base URL, an explicit flag always beats the environment
 variable, which beats the default.
 
+Requests go through the proxies named by the standard ``HTTP_PROXY``,
+``HTTPS_PROXY`` and ``ALL_PROXY`` environment variables, except for hosts
+listed in ``NO_PROXY``.
+
 The **password is only ever read from an interactive prompt** — never from a
 flag or environment variable. If a prompt would be required but stdin is not a
 terminal (e.g. in a non-interactive pipeline), the command fails fast with exit

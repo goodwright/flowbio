@@ -1,6 +1,9 @@
 import json
+import threading
+from collections.abc import Iterator
 from datetime import timedelta
 from http import HTTPMethod, HTTPStatus
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest.mock import patch
 
 import httpx
@@ -22,25 +25,76 @@ from tests.unit.v2.conftest import DEFAULT_BASE_URL, problem_response
 
 class TestTransportConnectionRetries:
 
-    @patch("flowbio.v2._transport.httpx.HTTPTransport")
-    def test_default_retries(self, mock_http_transport) -> None:
-        HttpTransport(DEFAULT_BASE_URL)
+    @respx.mock
+    @patch("time.sleep")
+    def test_succeeds_after_as_many_connection_failures_as_retries(self, _mock_sleep) -> None:
+        connection_retries = 2
+        route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(side_effect=[
+            httpx.ConnectError("refused"),
+            httpx.ConnectError("refused"),
+            httpx.Response(HTTPStatus.OK, json={"id": 1}),
+        ])
+        transport = HttpTransport(DEFAULT_BASE_URL, connection_retries=connection_retries)
 
-        mock_http_transport.assert_called_once_with(retries=3)
+        result = transport.get("/me")
 
-    @patch("flowbio.v2._transport.httpx.HTTPTransport")
-    def test_custom_retries(self, mock_http_transport) -> None:
-        connection_retries = 5
+        assert result == {"id": 1}
+        assert route.call_count == connection_retries + 1
 
-        HttpTransport(DEFAULT_BASE_URL, connection_retries=connection_retries)
+    @respx.mock
+    @patch("time.sleep")
+    def test_raises_after_one_more_connection_failure_than_retries(self, _mock_sleep) -> None:
+        connection_retries = 2
+        route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            side_effect=httpx.ConnectError("refused"),
+        )
+        transport = HttpTransport(DEFAULT_BASE_URL, connection_retries=connection_retries)
 
-        mock_http_transport.assert_called_once_with(retries=connection_retries)
+        with pytest.raises(httpx.ConnectError):
+            transport.get("/me")
 
-    @patch("flowbio.v2._transport.httpx.HTTPTransport")
-    def test_retries_disabled(self, mock_http_transport) -> None:
-        HttpTransport(DEFAULT_BASE_URL, connection_retries=0)
+        assert route.call_count == connection_retries + 1
 
-        mock_http_transport.assert_called_once_with(retries=0)
+    @respx.mock
+    @patch("time.sleep")
+    def test_retries_three_times_by_default(self, _mock_sleep) -> None:
+        route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            side_effect=httpx.ConnectError("refused"),
+        )
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(httpx.ConnectError):
+            transport.get("/me")
+
+        assert route.call_count == 4
+
+    @respx.mock
+    @patch("time.sleep")
+    def test_retries_a_connect_timeout(self, _mock_sleep) -> None:
+        route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(side_effect=[
+            httpx.ConnectTimeout("timed out"),
+            httpx.Response(HTTPStatus.OK, json={}),
+        ])
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        transport.get("/me")
+
+        assert route.call_count == 2
+
+    @respx.mock
+    @patch("time.sleep")
+    def test_does_not_retry_a_read_timeout(self, _mock_sleep) -> None:
+        # The request may already have reached the server, so retrying a
+        # write could apply it twice.
+        route = respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            side_effect=httpx.ReadTimeout("timed out"),
+        )
+        transport = HttpTransport(DEFAULT_BASE_URL)
+
+        with pytest.raises(httpx.ReadTimeout):
+            transport.get("/me")
+
+        assert route.call_count == 1
 
 
 class TestTransportRequestTimeout:
@@ -77,6 +131,67 @@ class TestTransportRequestTimeout:
         timeout = mock_client.call_args.kwargs["timeout"]
         assert timeout.connect == 10.0
 
+
+class _RecordingHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        self.server.request_targets.append(self.path)
+        body = b"{}"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args) -> None:
+        pass
+
+
+@pytest.fixture
+def local_server() -> Iterator[HTTPServer]:
+    server = HTTPServer(("127.0.0.1", 0), _RecordingHandler)
+    server.request_targets = []
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield server
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture
+def proxy_env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv(name.lower(), raising=False)
+    return monkeypatch
+
+
+class TestTransportProxy:
+
+    def test_routes_requests_through_the_environment_proxy(
+        self, local_server: HTTPServer, proxy_env: pytest.MonkeyPatch,
+    ) -> None:
+        host, port = local_server.server_address
+        proxy_env.setenv("HTTP_PROXY", f"http://{host}:{port}")
+        transport = HttpTransport("http://flow.invalid/api")
+
+        transport.get("/me")
+
+        # A forward proxy receives the absolute target URL; an origin server
+        # receives only the path.
+        assert local_server.request_targets == ["http://flow.invalid/api/me"]
+
+
+    def test_connects_directly_to_a_host_exempted_by_no_proxy(
+        self, local_server: HTTPServer, proxy_env: pytest.MonkeyPatch,
+    ) -> None:
+        host, port = local_server.server_address
+        proxy_env.setenv("HTTP_PROXY", "http://127.0.0.1:9")
+        proxy_env.setenv("NO_PROXY", host)
+        transport = HttpTransport(f"http://{host}:{port}/api", connection_retries=0)
+
+        transport.get("/me")
+
+        assert local_server.request_targets == ["/api/me"]
 
 class TestTransportGet:
 
@@ -744,6 +859,29 @@ class TestTransportRefreshOnUnauthorized:
         assert me_route.call_count == 2
         assert me_route.calls[0].request.headers["authorization"] == f"Bearer {old_token}"
         assert me_route.calls[1].request.headers["authorization"] == f"Bearer {new_token}"
+
+    @respx.mock
+    @patch("time.sleep")
+    def test_retries_a_connection_failure_while_refreshing(self, _mock_sleep) -> None:
+        new_token = "fresh.jwt"
+        respx.get(f"{DEFAULT_BASE_URL}/me").mock(
+            side_effect=[
+                httpx.Response(HTTPStatus.UNAUTHORIZED, json={"error": "Not authorized"}),
+                httpx.Response(HTTPStatus.OK, json={"username": "alice"}),
+            ],
+        )
+        respx.get(f"{DEFAULT_BASE_URL}/token").mock(
+            side_effect=[
+                httpx.ConnectError("refused"),
+                httpx.Response(HTTPStatus.OK, json={"token": new_token, "user": {}}),
+            ],
+        )
+        transport = HttpTransport(DEFAULT_BASE_URL)
+        transport.set_token("expired.jwt")
+
+        result = transport.get("/me")
+
+        assert result == {"username": "alice"}
 
     @respx.mock
     def test_post_refreshes_and_retries_chunk_upload(self) -> None:
