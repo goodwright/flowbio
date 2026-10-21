@@ -5,7 +5,7 @@ with open("README.md") as f:
 
 setup(
     name="flowbio",
-    version="0.14.0",
+    version="0.14.1",
     description="A client for the Flow API.",
     long_description=long_description,
     long_description_content_type="text/markdown",
