@@ -1,4 +1,5 @@
 import json
+import socket
 import threading
 from collections.abc import Iterator
 from datetime import timedelta
@@ -211,6 +212,27 @@ class TestTransportProxy:
         transport.get("/me")
 
         assert local_server.request_targets == ["/api/me"]
+
+    def test_routes_requests_through_a_socks_proxy(self, proxy_env: pytest.MonkeyPatch) -> None:
+        socks5_version = 0x05
+        received: list[bytes] = []
+        with socket.create_server(("127.0.0.1", 0)) as proxy:
+            def record_first_byte() -> None:
+                connection, _ = proxy.accept()
+                with connection:
+                    received.append(connection.recv(1))
+
+            thread = threading.Thread(target=record_first_byte, daemon=True)
+            thread.start()
+            host, port = proxy.getsockname()
+            proxy_env.setenv("ALL_PROXY", f"socks5://{host}:{port}")
+            transport = HttpTransport(DEFAULT_BASE_URL, connection_retries=0)
+
+            with pytest.raises(httpx.TransportError):
+                transport.get("/me")
+            thread.join(timeout=5)
+
+        assert received == [bytes([socks5_version])]
 
 
 class TestTransportGet:
