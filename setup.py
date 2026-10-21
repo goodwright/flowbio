@@ -36,7 +36,7 @@ setup(
         "tqdm",
         "kirjava",
         "requests",
-        "httpx>=0.28,<1",
+        "httpx[socks]>=0.28,<1",
         "pydantic>=2,<3",
         "tenacity>=9,<10",
         "typing_extensions>=4.5",
