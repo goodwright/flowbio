@@ -41,6 +41,7 @@ from flowbio.v2.data import Data
 from flowbio.v2.exceptions import AnnotationValidationError
 from flowbio.v2.samples import (
     MetadataAttribute,
+    MetadataValue,
     MultiplexedUpload,
     Organism,
     Project,
@@ -60,6 +61,7 @@ __all__ = [
     "ClientConfig",
     "Data",
     "MetadataAttribute",
+    "MetadataValue",
     "MultiplexedUpload",
     "Organism",
     "Project",

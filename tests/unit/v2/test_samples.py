@@ -18,6 +18,7 @@ from flowbio.v2.exceptions import (
 )
 from flowbio.v2.samples import (
     MetadataAttribute,
+    MetadataValue,
     MultiplexedUpload,
     Organism,
     Project,
@@ -1148,6 +1149,33 @@ class TestImportSamples:
                 "pubmed": "12345678",
                 "metadata": {"strandedness": "reverse"},
             }],
+        }
+
+    @respx.mock
+    def test_sends_an_annotated_value_as_value_and_annotation_beside_a_bare_one(self) -> None:
+        route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json={
+                "id": "1", "status": "RUNNING", "created": "2023-11-14T22:13:20Z", "accessions": ["ERR1"],
+                "sample_ids": [], "execution_id": None, "error": None,
+            }),
+        )
+
+        client = Client()
+        client.samples.import_samples([
+            SampleImportSpec(
+                accession="ERR1",
+                sample_type="rna_seq",
+                metadata={
+                    "cell_line": MetadataValue(value="HEK293", annotation="FLAG-tagged"),
+                    "strandedness": "reverse",
+                },
+            ),
+        ])
+
+        payload = json.loads(route.calls[0].request.content)
+        assert payload["imports"][0]["metadata"] == {
+            "cell_line": {"value": "HEK293", "annotation": "FLAG-tagged"},
+            "strandedness": "reverse",
         }
 
     @respx.mock

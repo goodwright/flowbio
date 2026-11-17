@@ -156,6 +156,17 @@ SampleImportStatus = Literal["RUNNING", "COMPLETED", "FAILED"]
 """The lifecycle state of a :class:`SampleImportJob`."""
 
 
+class MetadataValue(BaseModel, frozen=True):
+    """A metadata value with a free-text annotation beside it.
+
+    Only an attribute whose :attr:`~MetadataAttribute.allow_annotation` is set
+    takes an annotation; the server refuses one on any other.
+    """
+
+    value: str = Field(description="The value.")
+    annotation: str = Field(description="The note beside the value.")
+
+
 @dataclass(frozen=True)
 class SampleImportSpec:
     """One accession to import, with its per-accession identity and metadata.
@@ -168,7 +179,10 @@ class SampleImportSpec:
                 accession="ERR10677146",
                 sample_type="RNA-Seq",
                 organism_id="Hs",
-                metadata={"strandedness": "reverse"},
+                metadata={
+                    "strandedness": "reverse",
+                    "cell_line": MetadataValue(value="HEK293", annotation="FLAG-tagged"),
+                },
             ),
         ]
 
@@ -185,8 +199,10 @@ class SampleImportSpec:
         :meth:`SampleResource.get_owned_projects`.
     :param pubmed: Optional PubMed id (a bare number, e.g. ``"12345678"``) of
         the publication to associate with the sample. Validated server-side.
-    :param metadata: Optional metadata key-value pairs. See
-        :ref:`metadata-attributes` for details on required attributes.
+    :param metadata: Optional metadata, keyed by attribute identifier. Each
+        value is a plain string, or a :class:`MetadataValue` to give it an
+        annotation. See :ref:`metadata-attributes` for details on required
+        attributes.
     """
 
     accession: str
@@ -195,7 +211,7 @@ class SampleImportSpec:
     organism_id: str | None = None
     project_id: str | None = None
     pubmed: PubMedId | None = None
-    metadata: dict[str, str] | None = None
+    metadata: dict[str, str | MetadataValue] | None = None
 
 
 class SampleImportJob(BaseModel):
@@ -532,7 +548,7 @@ class SampleResource:
         return SampleImportJob(**self._transport.get(f"/v2/sample-imports/{job_id}"))
 
     @staticmethod
-    def _import_spec_fields(spec: SampleImportSpec) -> dict[str, str | dict[str, str]]:
+    def _import_spec_fields(spec: SampleImportSpec) -> dict[str, str | dict[str, str | dict[str, str]]]:
         """Build the wire payload for one accession.
 
         Only ``accession`` and ``sample_type`` are always sent; every other
@@ -543,6 +559,10 @@ class SampleResource:
         fields = asdict(spec)
         fields["organism"] = fields.pop("organism_id")
         fields["project"] = fields.pop("project_id")
+        fields["metadata"] = {
+            identifier: value if isinstance(value, str) else value.model_dump()
+            for identifier, value in (spec.metadata or {}).items()
+        }
         required = ("accession", "sample_type")
         return {key: value for key, value in fields.items() if key in required or value}
 
