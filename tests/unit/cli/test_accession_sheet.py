@@ -5,7 +5,7 @@ import pytest
 
 from flowbio.cli._accession_sheet import AccessionSheetRow, parse_accession_sheet
 from flowbio.cli._exit_codes import CliUsageError
-from flowbio.v2.samples import SampleImportSpec
+from flowbio.v2.samples import MetadataValue, SampleImportSpec
 
 HEADERS = ["accession", "name", "organism", "project", "pubmed", "sample_type", "cell_type", "source", "source__annotation"]
 
@@ -297,6 +297,28 @@ class TestParseAccessionSheet:
                 _record(accession=""),
             ))
 
+    def test_row_with_an_annotation_but_no_value_is_usage_error(self, tmp_path: Path) -> None:
+        with pytest.raises(
+            CliUsageError, match=r"data row\(s\) 2 has an annotation with no value beside it",
+        ):
+            parse_accession_sheet(_write_sheet(
+                tmp_path,
+                _record(source="blood", source__annotation="left lobe"),
+                _record(source="", source__annotation="left lobe"),
+            ))
+
+    def test_annotation_column_without_its_attribute_column_is_usage_error(self, tmp_path: Path) -> None:
+        path = _write_sheet(
+            tmp_path,
+            _record(source__annotation="left lobe"),
+            headers=["accession", "sample_type", "source__annotation"],
+        )
+
+        with pytest.raises(
+            CliUsageError, match=r"data row\(s\) 1 has an annotation with no value beside it",
+        ):
+            parse_accession_sheet(path)
+
     def test_row_with_no_accession_column_is_usage_error(self, tmp_path: Path) -> None:
         path = tmp_path / "sheet.csv"
         with path.open("w", newline="") as handle:
@@ -441,14 +463,19 @@ class TestAccessionSheetRowToSpec:
             metadata={"cell_type": "Neuron"},
         )
 
-    def test_annotation_suffixed_column_is_forwarded_as_a_plain_metadata_key(
-        self, tmp_path: Path,
-    ) -> None:
-        # Unlike upload-batch, there's no special handling of `<id>__annotation`
-        # here — it's just another metadata column, and the server does not
-        # recognise it as one (see cli.rst).
-        row = self._row(tmp_path, source="blood", source__annotation="left lobe")
+    def test_annotation_column_is_sent_as_its_attribute_value_annotation(self, tmp_path: Path) -> None:
+        row = self._row(tmp_path, source="blood", source__annotation="left lobe", cell_type="Neuron")
 
         spec = row.to_spec()
 
-        assert spec.metadata == {"source": "blood", "source__annotation": "left lobe"}
+        assert spec.metadata == {
+            "source": MetadataValue(value="blood", annotation="left lobe"),
+            "cell_type": "Neuron",
+        }
+
+    def test_a_blank_annotation_cell_leaves_the_value_bare(self, tmp_path: Path) -> None:
+        row = self._row(tmp_path, source="blood", source__annotation="")
+
+        spec = row.to_spec()
+
+        assert spec.metadata == {"source": "blood"}

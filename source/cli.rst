@@ -416,6 +416,8 @@ rejects up front rather than guessing:
   stray trailing comma) is ignored.
 - Every row must have an accession and a sample type; a blank cell in
   either column rejects the whole sheet.
+- An ``<identifier>__annotation`` cell needs a value in the ``<identifier>``
+  column of the same row.
 
 A row with every cell blank — whatever its width, including one with fewer
 cells than the header (e.g. a trailing comma-only line some spreadsheet
@@ -425,10 +427,10 @@ skipped rather than treated as a row missing values. Rows are counted from
 ``upload-batch``'s ``row_number``) — except a line with no commas at all
 (as opposed to one with only blank cells), which doesn't consume a number.
 
-Unlike ``upload-batch``, a metadata column named ``<identifier>__annotation``
-is **not** given any special handling here — it is forwarded as an ordinary
-metadata key, which the server does not recognise, so it is silently
-ignored rather than attached as an annotation or rejected.
+A metadata column named ``<identifier>__annotation`` carries the annotation
+beside that attribute's value, as in ``upload-batch``: the two are sent
+together, and the server refuses an annotation on an attribute that does not
+allow one.
 
 Every row is submitted **together as one server-side job**. This command
 does **not wait for it to finish** — it reports the job's id and initial
