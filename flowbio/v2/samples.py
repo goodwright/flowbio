@@ -26,12 +26,12 @@ Upload with metadata, project, and organism::
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NewType
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter
 
 from flowbio.v2._pagination import PageIterator
 from flowbio.v2.exceptions import (
@@ -156,7 +156,7 @@ SampleImportStatus = Literal["RUNNING", "COMPLETED", "FAILED"]
 """The lifecycle state of a :class:`SampleImportJob`."""
 
 
-class MetadataValue(BaseModel, frozen=True):
+class AnnotatedMetadataValue(BaseModel, frozen=True):
     """A metadata value with a free-text annotation beside it.
 
     Only an attribute whose :attr:`~MetadataAttribute.allow_annotation` is set
@@ -181,7 +181,7 @@ class SampleImportSpec:
                 organism_id="Hs",
                 metadata={
                     "strandedness": "reverse",
-                    "cell_line": MetadataValue(value="HEK293", annotation="FLAG-tagged"),
+                    "cell_line": AnnotatedMetadataValue(value="HEK293", annotation="FLAG-tagged"),
                 },
             ),
         ]
@@ -200,7 +200,7 @@ class SampleImportSpec:
     :param pubmed: Optional PubMed id (a bare number, e.g. ``"12345678"``) of
         the publication to associate with the sample. Validated server-side.
     :param metadata: Optional metadata, keyed by attribute identifier. Each
-        value is a plain string, or a :class:`MetadataValue` to give it an
+        value is a plain string, or a :class:`AnnotatedMetadataValue` to give it an
         annotation. See :ref:`metadata-attributes` for details on required
         attributes.
     """
@@ -211,7 +211,10 @@ class SampleImportSpec:
     organism_id: str | None = None
     project_id: str | None = None
     pubmed: PubMedId | None = None
-    metadata: dict[str, str | MetadataValue] | None = None
+    metadata: Mapping[str, str | AnnotatedMetadataValue] | None = None
+
+
+_IMPORT_METADATA = TypeAdapter(Mapping[str, str | AnnotatedMetadataValue])
 
 
 class SampleImportJob(BaseModel):
@@ -559,10 +562,7 @@ class SampleResource:
         fields = asdict(spec)
         fields["organism"] = fields.pop("organism_id")
         fields["project"] = fields.pop("project_id")
-        fields["metadata"] = {
-            identifier: value if isinstance(value, str) else value.model_dump()
-            for identifier, value in (spec.metadata or {}).items()
-        }
+        fields["metadata"] = _IMPORT_METADATA.dump_python(spec.metadata or {})
         required = ("accession", "sample_type")
         return {key: value for key, value in fields.items() if key in required or value}
 

@@ -4,9 +4,8 @@ An accession sheet is a CSV with one row per accession to import: required
 ``accession`` and ``sample_type`` columns, plus optional ``name``/
 ``organism``/``project``/``pubmed`` and per-accession metadata columns, where
 an ``<identifier>__annotation`` column carries the annotation beside that
-attribute's value. This
-mirrors ``_sheet.py``'s reads-based sample sheet, but the reserved columns
-differ — there is nothing to upload (no ``reads1``/``reads2``).
+attribute's value. This mirrors ``_sheet.py``'s reads-based sample sheet, but
+the reserved columns differ — there is nothing to upload (no ``reads1``/``reads2``).
 
 Domain rules (accession format, duplicates, sample type, organism, project, pubmed, metadata)
 are all checked server-side when the sheet is submitted — duplicating that
@@ -28,7 +27,7 @@ from pathlib import Path
 from flowbio.cli._exit_codes import CliUsageError
 from flowbio.cli._files import existing_file
 from flowbio.cli._sheet import ANNOTATION_SUFFIX
-from flowbio.v2.samples import MetadataValue, PubMedId, SampleImportSpec, SampleTypeId
+from flowbio.v2.samples import AnnotatedMetadataValue, PubMedId, SampleImportSpec, SampleTypeId
 
 RESERVED_COLUMNS = ("accession", "name", "organism", "project", "pubmed", "sample_type")
 
@@ -49,7 +48,7 @@ class AccessionSheetRow:
     project: str | None
     pubmed: PubMedId | None
     sample_type: SampleTypeId
-    metadata: dict[str, str | MetadataValue]
+    metadata: Mapping[str, str | AnnotatedMetadataValue]
 
     def __post_init__(self) -> None:
         if not self.accession:
@@ -91,7 +90,9 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         header row, has an unnamed or duplicated column, has no rows, has
         a row with fewer cells than the header or with more cells than the
         header where the overflow isn't blank, or has a row with no
-        accession, no sample_type, or an annotation with no value beside it.
+        accession, no sample_type, or an annotation with no value beside it,
+        or an ``<identifier>__annotation`` column with no ``<identifier>``
+        metadata column to annotate.
     """
     if path.suffix.lower() != ".csv":
         raise CliUsageError(
@@ -104,7 +105,7 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
     overflow_rows: list[int] = []
     missing_accession: list[int] = []
     missing_sample_type: list[int] = []
-    annotation_without_value: list[int] = []
+    annotation_without_value: dict[str, list[int]] = {}
     # utf-8-sig transparently strips a leading BOM, which spreadsheet tools
     # (notably Excel's "CSV UTF-8" export) prepend — otherwise the first header
     # parses as "﻿accession" and every row reports a missing accession.
@@ -130,8 +131,8 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
                 missing_accession.append(row_number)
             if sample_type is None:
                 missing_sample_type.append(row_number)
-            if _has_annotation_without_value(record, metadata_columns):
-                annotation_without_value.append(row_number)
+            for column in _annotations_without_value(record, metadata_columns):
+                annotation_without_value.setdefault(column, []).append(row_number)
             if accession is None or sample_type is None:
                 continue
             rows.append(_build_row(record, row_number, metadata_columns, accession, sample_type))
@@ -151,7 +152,22 @@ def _read_header(reader: csv.DictReader[str]) -> tuple[list[str], list[str]]:
     reader.fieldnames = headers
     _check_headers(headers)
     metadata_columns = [header for header in headers if header not in RESERVED_COLUMNS]
+    _check_annotation_columns(metadata_columns)
     return headers, metadata_columns
+
+
+def _check_annotation_columns(metadata_columns: list[str]) -> None:
+    attributes = {column for column in metadata_columns if not column.endswith(ANNOTATION_SUFFIX)}
+    stray = [
+        column for column in metadata_columns
+        if column.endswith(ANNOTATION_SUFFIX) and column.removesuffix(ANNOTATION_SUFFIX) not in attributes
+    ]
+    if stray:
+        names = ", ".join(f"'{column}'" for column in stray)
+        raise CliUsageError(
+            f"Accession sheet column(s) {names} annotate no metadata column. Give each "
+            f"<identifier>{ANNOTATION_SUFFIX} column an <identifier> metadata column beside it, or remove it.",
+        )
 
 
 def _check_rows(
@@ -160,7 +176,7 @@ def _check_rows(
     overflow_rows: list[int],
     missing_accession: list[int],
     missing_sample_type: list[int],
-    annotation_without_value: list[int],
+    annotation_without_value: dict[str, list[int]],
 ) -> None:
     """Raise if the sheet had no rows at all, or any row failed a structural check."""
     if not (rows or short_rows or overflow_rows or missing_accession or missing_sample_type):
@@ -175,7 +191,10 @@ def _check_rows(
             _row_reason_clause("more cells than the header", overflow_rows),
             _row_reason_clause("no accession", missing_accession),
             _row_reason_clause("no sample_type", missing_sample_type),
-            _row_reason_clause("an annotation with no value beside it", annotation_without_value),
+            *(
+                _row_reason_clause(f"a {column} with no {column.removesuffix(ANNOTATION_SUFFIX)} value", rows)
+                for column, rows in annotation_without_value.items()
+            ),
         ) if clause is not None
     ]
     message = f"Accession sheet {'; '.join(clauses)}."
@@ -192,8 +211,7 @@ def _check_rows(
         )
     if annotation_without_value:
         remedies.append(
-            "fill in the attribute's own column beside each <identifier>__annotation "
-            "value, or clear the annotation",
+            "fill in each annotated attribute's value, or clear its annotation",
         )
     message += "".join(f" {remedy[0].upper()}{remedy[1:]}." for remedy in remedies)
     raise CliUsageError(message)
@@ -228,12 +246,13 @@ def _duplicate_columns_clause(duplicates: list[str]) -> str:
     return f"column name(s) {names} {verb} duplicated"
 
 
-def _has_annotation_without_value(record: ParsedRow, metadata_columns: list[str]) -> bool:
-    return any(
-        _cell(record, column) is not None and _cell(record, column.removesuffix(ANNOTATION_SUFFIX)) is None
-        for column in metadata_columns
+def _annotations_without_value(record: ParsedRow, metadata_columns: list[str]) -> list[str]:
+    return [
+        column for column in metadata_columns
         if column.endswith(ANNOTATION_SUFFIX)
-    )
+        and _cell(record, column) is not None
+        and _cell(record, column.removesuffix(ANNOTATION_SUFFIX)) is None
+    ]
 
 
 def _is_blank_row(record: ParsedRow, headers: list[str]) -> bool:
@@ -271,8 +290,8 @@ def _build_row(
         for column in metadata_columns
         if (value := _cell(record, column)) is not None
     }
-    metadata: dict[str, str | MetadataValue] = {
-        column: MetadataValue(value=value, annotation=annotation)
+    metadata: dict[str, str | AnnotatedMetadataValue] = {
+        column: AnnotatedMetadataValue(value=value, annotation=annotation)
         if (annotation := cells.get(column + ANNOTATION_SUFFIX)) is not None
         else value
         for column, value in cells.items()

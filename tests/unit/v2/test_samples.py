@@ -17,8 +17,8 @@ from flowbio.v2.exceptions import (
     NotFoundError,
 )
 from flowbio.v2.samples import (
+    AnnotatedMetadataValue,
     MetadataAttribute,
-    MetadataValue,
     MultiplexedUpload,
     Organism,
     Project,
@@ -1166,7 +1166,7 @@ class TestImportSamples:
                 accession="ERR1",
                 sample_type="rna_seq",
                 metadata={
-                    "cell_line": MetadataValue(value="HEK293", annotation="FLAG-tagged"),
+                    "cell_line": AnnotatedMetadataValue(value="HEK293", annotation="FLAG-tagged"),
                     "strandedness": "reverse",
                 },
             ),

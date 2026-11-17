@@ -395,8 +395,9 @@ no ``batch-template`` equivalent for it, since it has no reads files).
 sample type, so a mixed-type sheet needs no special handling and a
 single-type sheet just repeats the same value down the column.
 
-Every value is sent as-is, with surrounding whitespace trimmed; header
-names are trimmed the same way. The accession format, sample type,
+Every value is sent as-is, with surrounding whitespace trimmed, and an
+annotation column is sent beside its attribute's value; header names are
+trimmed the same way. The accession format, sample type,
 organism, project, pubmed, and metadata rules are all validated
 **server-side**. This command only
 checks what's structural — anything it can't resolve on your behalf, it
@@ -416,8 +417,9 @@ rejects up front rather than guessing:
   stray trailing comma) is ignored.
 - Every row must have an accession and a sample type; a blank cell in
   either column rejects the whole sheet.
-- An ``<identifier>__annotation`` cell needs a value in the ``<identifier>``
-  column of the same row.
+- An ``<identifier>__annotation`` column needs an ``<identifier>`` metadata
+  column to annotate, and a filled-in annotation cell needs a value in that
+  column on the same row.
 
 A row with every cell blank — whatever its width, including one with fewer
 cells than the header (e.g. a trailing comma-only line some spreadsheet
