@@ -5,7 +5,7 @@ import pytest
 
 from flowbio.cli._accession_sheet import AccessionSheetRow, parse_accession_sheet
 from flowbio.cli._exit_codes import CliUsageError
-from flowbio.v2.samples import MetadataValue, SampleImportSpec
+from flowbio.v2.samples import AnnotatedMetadataValue, SampleImportSpec
 
 HEADERS = ["accession", "name", "organism", "project", "pubmed", "sample_type", "cell_type", "source", "source__annotation"]
 
@@ -299,7 +299,7 @@ class TestParseAccessionSheet:
 
     def test_row_with_an_annotation_but_no_value_is_usage_error(self, tmp_path: Path) -> None:
         with pytest.raises(
-            CliUsageError, match=r"data row\(s\) 2 has an annotation with no value beside it",
+            CliUsageError, match=r"data row\(s\) 2 has a source__annotation with no source value",
         ):
             parse_accession_sheet(_write_sheet(
                 tmp_path,
@@ -307,16 +307,23 @@ class TestParseAccessionSheet:
                 _record(source="", source__annotation="left lobe"),
             ))
 
-    def test_annotation_column_without_its_attribute_column_is_usage_error(self, tmp_path: Path) -> None:
-        path = _write_sheet(
-            tmp_path,
-            _record(source__annotation="left lobe"),
-            headers=["accession", "sample_type", "source__annotation"],
-        )
+    @pytest.mark.parametrize(
+        ("headers", "column"),
+        [
+            (["accession", "sample_type", "cell_line__annotation"], "cell_line__annotation"),
+            (["accession", "sample_type", "organism", "organism__annotation"], "organism__annotation"),
+            (
+                ["accession", "sample_type", "source", "source__annotation", "source__annotation__annotation"],
+                "source__annotation__annotation",
+            ),
+        ],
+    )
+    def test_annotation_column_with_no_metadata_column_to_annotate_is_usage_error(
+        self, tmp_path: Path, headers: list[str], column: str,
+    ) -> None:
+        path = _write_sheet(tmp_path, _record(), headers=headers)
 
-        with pytest.raises(
-            CliUsageError, match=r"data row\(s\) 1 has an annotation with no value beside it",
-        ):
+        with pytest.raises(CliUsageError, match=rf"column\(s\) '{column}' annotate no metadata column"):
             parse_accession_sheet(path)
 
     def test_row_with_no_accession_column_is_usage_error(self, tmp_path: Path) -> None:
@@ -469,7 +476,7 @@ class TestAccessionSheetRowToSpec:
         spec = row.to_spec()
 
         assert spec.metadata == {
-            "source": MetadataValue(value="blood", annotation="left lobe"),
+            "source": AnnotatedMetadataValue(value="blood", annotation="left lobe"),
             "cell_type": "Neuron",
         }
 

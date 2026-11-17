@@ -20,7 +20,8 @@ from flowbio.v2.samples import MetadataAttribute, SampleTypeId
 RESERVED_COLUMNS = ("name", "reads1", "reads2", "project", "organism")
 ANNOTATION_SUFFIX = "__annotation"
 """Suffix that marks a metadata column as the free-text annotation companion of
-``<identifier>``. Shared with ``batch-template`` so the sheet round-trips."""
+``<identifier>``. Shared with ``batch-template`` so the sheet round-trips, and
+with the accession sheet of ``samples import``."""
 
 
 @dataclass(frozen=True)
