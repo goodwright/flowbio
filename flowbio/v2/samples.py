@@ -27,7 +27,7 @@ Upload with metadata, project, and organism::
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NewType
 
@@ -214,7 +214,7 @@ class SampleImportSpec:
     metadata: Mapping[str, str | AnnotatedMetadataValue] | None = None
 
 
-_IMPORT_METADATA = TypeAdapter(Mapping[str, str | AnnotatedMetadataValue])
+_IMPORT_METADATA = TypeAdapter(dict[str, str | AnnotatedMetadataValue])
 
 
 class SampleImportJob(BaseModel):
@@ -559,10 +559,10 @@ class SampleResource:
         under their wire names (``organism``/``project``); the rest keep their
         dataclass name.
         """
-        fields = asdict(spec)
+        fields = asdict(replace(spec, metadata=None))
         fields["organism"] = fields.pop("organism_id")
         fields["project"] = fields.pop("project_id")
-        fields["metadata"] = _IMPORT_METADATA.dump_python(spec.metadata or {})
+        fields["metadata"] = _IMPORT_METADATA.dump_python(dict(spec.metadata or {}))
         required = ("accession", "sample_type")
         return {key: value for key, value in fields.items() if key in required or value}
 

@@ -299,7 +299,7 @@ class TestParseAccessionSheet:
 
     def test_row_with_an_annotation_but_no_value_is_usage_error(self, tmp_path: Path) -> None:
         with pytest.raises(
-            CliUsageError, match=r"data row\(s\) 2 has a source__annotation with no source value",
+            CliUsageError, match=r"data row\(s\) 2 has source__annotation filled in but no source value",
         ):
             parse_accession_sheet(_write_sheet(
                 tmp_path,

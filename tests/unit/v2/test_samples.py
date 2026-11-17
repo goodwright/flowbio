@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timezone
 from http import HTTPStatus
 from pathlib import Path
+from types import MappingProxyType
 from unittest.mock import ANY, patch
 
 import httpx
@@ -1177,6 +1178,25 @@ class TestImportSamples:
             "cell_line": {"value": "HEK293", "annotation": "FLAG-tagged"},
             "strandedness": "reverse",
         }
+
+    @respx.mock
+    def test_sends_metadata_given_as_a_read_only_mapping(self) -> None:
+        route = respx.post(f"{DEFAULT_BASE_URL}/v2/sample-imports").mock(
+            return_value=httpx.Response(HTTPStatus.CREATED, json={
+                "id": "1", "status": "RUNNING", "created": "2023-11-14T22:13:20Z", "accessions": ["ERR1"],
+                "sample_ids": [], "execution_id": None, "error": None,
+            }),
+        )
+
+        client = Client()
+        client.samples.import_samples([
+            SampleImportSpec(
+                accession="ERR1", sample_type="rna_seq", metadata=MappingProxyType({"strandedness": "reverse"}),
+            ),
+        ])
+
+        payload = json.loads(route.calls[0].request.content)
+        assert payload["imports"][0]["metadata"] == {"strandedness": "reverse"}
 
     @respx.mock
     def test_empty_string_optional_fields_are_omitted_not_the_required_ones(self) -> None:

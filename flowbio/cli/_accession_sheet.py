@@ -192,8 +192,10 @@ def _check_rows(
             _row_reason_clause("no accession", missing_accession),
             _row_reason_clause("no sample_type", missing_sample_type),
             *(
-                _row_reason_clause(f"a {column} with no {column.removesuffix(ANNOTATION_SUFFIX)} value", rows)
-                for column, rows in annotation_without_value.items()
+                _row_reason_clause(
+                    f"{column} filled in but no {column.removesuffix(ANNOTATION_SUFFIX)} value", row_numbers,
+                )
+                for column, row_numbers in annotation_without_value.items()
             ),
         ) if clause is not None
     ]
