@@ -71,3 +71,9 @@ class TestSubmoduleExports:
         from flowbio.v2.exceptions import NotFoundError
 
         assert NotFoundError is not None
+
+    def test_metadata_value_is_exported(self) -> None:
+        from flowbio.v2 import MetadataValue
+        from flowbio.v2.samples import MetadataValue as DirectMetadataValue
+
+        assert MetadataValue is DirectMetadataValue
