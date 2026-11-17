@@ -2,7 +2,9 @@
 
 An accession sheet is a CSV with one row per accession to import: required
 ``accession`` and ``sample_type`` columns, plus optional ``name``/
-``organism``/``project``/``pubmed`` and per-accession metadata columns. This
+``organism``/``project``/``pubmed`` and per-accession metadata columns, where
+an ``<identifier>__annotation`` column carries the annotation beside that
+attribute's value. This
 mirrors ``_sheet.py``'s reads-based sample sheet, but the reserved columns
 differ — there is nothing to upload (no ``reads1``/``reads2``).
 
@@ -25,7 +27,8 @@ from pathlib import Path
 
 from flowbio.cli._exit_codes import CliUsageError
 from flowbio.cli._files import existing_file
-from flowbio.v2.samples import PubMedId, SampleImportSpec, SampleTypeId
+from flowbio.cli._sheet import ANNOTATION_SUFFIX
+from flowbio.v2.samples import MetadataValue, PubMedId, SampleImportSpec, SampleTypeId
 
 RESERVED_COLUMNS = ("accession", "name", "organism", "project", "pubmed", "sample_type")
 
@@ -46,7 +49,7 @@ class AccessionSheetRow:
     project: str | None
     pubmed: PubMedId | None
     sample_type: SampleTypeId
-    metadata: dict[str, str]
+    metadata: dict[str, str | MetadataValue]
 
     def __post_init__(self) -> None:
         if not self.accession:
@@ -88,7 +91,7 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
         header row, has an unnamed or duplicated column, has no rows, has
         a row with fewer cells than the header or with more cells than the
         header where the overflow isn't blank, or has a row with no
-        accession or no sample_type.
+        accession, no sample_type, or an annotation with no value beside it.
     """
     if path.suffix.lower() != ".csv":
         raise CliUsageError(
@@ -101,6 +104,7 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
     overflow_rows: list[int] = []
     missing_accession: list[int] = []
     missing_sample_type: list[int] = []
+    annotation_without_value: list[int] = []
     # utf-8-sig transparently strips a leading BOM, which spreadsheet tools
     # (notably Excel's "CSV UTF-8" export) prepend — otherwise the first header
     # parses as "﻿accession" and every row reports a missing accession.
@@ -126,10 +130,14 @@ def parse_accession_sheet(path: Path) -> AccessionSheet:
                 missing_accession.append(row_number)
             if sample_type is None:
                 missing_sample_type.append(row_number)
+            if _has_annotation_without_value(record, metadata_columns):
+                annotation_without_value.append(row_number)
             if accession is None or sample_type is None:
                 continue
             rows.append(_build_row(record, row_number, metadata_columns, accession, sample_type))
-    _check_rows(rows, short_rows, overflow_rows, missing_accession, missing_sample_type)
+    _check_rows(
+        rows, short_rows, overflow_rows, missing_accession, missing_sample_type, annotation_without_value,
+    )
     return AccessionSheet(path=path, rows=rows)
 
 
@@ -152,11 +160,14 @@ def _check_rows(
     overflow_rows: list[int],
     missing_accession: list[int],
     missing_sample_type: list[int],
+    annotation_without_value: list[int],
 ) -> None:
     """Raise if the sheet had no rows at all, or any row failed a structural check."""
     if not (rows or short_rows or overflow_rows or missing_accession or missing_sample_type):
         raise CliUsageError("Accession sheet has no rows.")
-    if not (short_rows or overflow_rows or missing_accession or missing_sample_type):
+    if not (
+        short_rows or overflow_rows or missing_accession or missing_sample_type or annotation_without_value
+    ):
         return
     clauses = [
         clause for clause in (
@@ -164,6 +175,7 @@ def _check_rows(
             _row_reason_clause("more cells than the header", overflow_rows),
             _row_reason_clause("no accession", missing_accession),
             _row_reason_clause("no sample_type", missing_sample_type),
+            _row_reason_clause("an annotation with no value beside it", annotation_without_value),
         ) if clause is not None
     ]
     message = f"Accession sheet {'; '.join(clauses)}."
@@ -177,6 +189,11 @@ def _check_rows(
         remedies.append(
             "if a value legitimately contains a comma, quote it; otherwise "
             "remove the extra cell(s)",
+        )
+    if annotation_without_value:
+        remedies.append(
+            "fill in the attribute's own column beside each <identifier>__annotation "
+            "value, or clear the annotation",
         )
     message += "".join(f" {remedy[0].upper()}{remedy[1:]}." for remedy in remedies)
     raise CliUsageError(message)
@@ -211,6 +228,14 @@ def _duplicate_columns_clause(duplicates: list[str]) -> str:
     return f"column name(s) {names} {verb} duplicated"
 
 
+def _has_annotation_without_value(record: ParsedRow, metadata_columns: list[str]) -> bool:
+    return any(
+        _cell(record, column) is not None and _cell(record, column.removesuffix(ANNOTATION_SUFFIX)) is None
+        for column in metadata_columns
+        if column.endswith(ANNOTATION_SUFFIX)
+    )
+
+
 def _is_blank_row(record: ParsedRow, headers: list[str]) -> bool:
     return not any(_cell(record, header) for header in headers)
 
@@ -241,10 +266,17 @@ def _build_row(
     accession: str,
     sample_type: str,
 ) -> AccessionSheetRow:
-    metadata = {
+    cells = {
         column: value
         for column in metadata_columns
         if (value := _cell(record, column)) is not None
+    }
+    metadata: dict[str, str | MetadataValue] = {
+        column: MetadataValue(value=value, annotation=annotation)
+        if (annotation := cells.get(column + ANNOTATION_SUFFIX)) is not None
+        else value
+        for column, value in cells.items()
+        if not column.endswith(ANNOTATION_SUFFIX)
     }
     return AccessionSheetRow(
         row_number=row_number,

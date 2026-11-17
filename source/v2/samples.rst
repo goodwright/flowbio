@@ -176,16 +176,23 @@ samples directly from public-repository run or experiment accessions
 (SRR/ERR/DRR or SRX/ERX/DRX), instead of uploading files yourself. Every
 accession submitted together is tracked as a single job::
 
-    from flowbio.v2 import SampleImportSpec
+    from flowbio.v2 import MetadataValue, SampleImportSpec
 
     job = client.samples.import_samples([
         SampleImportSpec(accession="ERR1160845", sample_type="RNA-Seq"),
         SampleImportSpec(
             accession="ERR10677146",
             sample_type="RNA-Seq",
-            metadata={"strandedness": "reverse"},
+            metadata={
+                "strandedness": "reverse",
+                "cell_line": MetadataValue(value="HEK293", annotation="FLAG-tagged"),
+            },
         ),
     ])
+
+A metadata value is a plain string, or a
+:class:`~flowbio.v2.samples.MetadataValue` to give it an annotation. Only an
+attribute that allows annotations takes one.
 
 The job starts out ``"RUNNING"``. Poll it with
 :meth:`~flowbio.v2.samples.SampleResource.get_import` until its status
@@ -231,6 +238,8 @@ Models
 
 .. autoclass:: flowbio.v2.samples.SampleImportSpec
    :members:
+
+.. autopydantic_model:: flowbio.v2.samples.MetadataValue
 
 .. autopydantic_model:: flowbio.v2.samples.SampleImportJob
 
